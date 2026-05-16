@@ -1,0 +1,6 @@
+{
+  "name": "libscrcpy_capture.so",
+  "types": "./Index.d.ts",
+  "version": "1.0.0",
+  "description": "Scrcpy native screen capture + H264 encoder."
+}

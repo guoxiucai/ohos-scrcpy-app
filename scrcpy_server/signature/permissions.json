@@ -1,0 +1,32 @@
+{
+  "bundleName": "com.ohos.scrcpy.server",
+  "app_signature": [
+    "8E93863FC32EE238060BF69A9B37E2608FFFB21F93C862DD511CBAC9F30024B5"
+  ],
+  "permissions": [
+    {
+      "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
+      "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.START_ABILITIES_FROM_BACKGROUND",
+      "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.CAPTURE_SCREEN",
+      "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",
+      "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE",
+      "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",
+      "userCancellable": false
+    }
+  ]
+}

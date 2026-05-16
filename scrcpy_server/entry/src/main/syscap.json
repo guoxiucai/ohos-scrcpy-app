@@ -1,0 +1,23 @@
+{
+  "devices": {
+    "general": [
+      "default",
+      "tablet"
+    ],
+    "custom": [
+    ]
+  },
+
+  "development": {
+    "addedSysCaps": []
+  },
+  "production": {
+    "removedSysCaps": [
+      "SystemCapability.Multimedia.Media.AVTranscoder",
+      "SystemCapability.Notification.NotificationSettings",
+      "SystemCapability.Resourceschedule.BackgroundProcessManager",
+      "SystemCapability.Test.PerfTest",
+      "SystemCapability.Security.CertificateManagerDialog"
+    ]
+  }
+}

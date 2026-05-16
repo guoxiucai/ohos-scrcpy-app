@@ -1,0 +1,115 @@
+{
+  "module": {
+    "name": "entry",
+    "type": "entry",
+    "description": "$string:module_desc",
+    "mainElement": "ScrcpyService",
+    "deviceTypes": [
+      "default",
+      "tablet"
+    ],
+    "deliveryWithInstall": true,
+    "installationFree": false,
+    "pages": "$profile:main_pages",
+    "abilities": [
+      {
+        "name": "EntryAbility",
+        "srcEntry": "./ets/entryability/EntryAbility.ets",
+        "description": "$string:EntryAbility_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:EntryAbility_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "skills": [
+          {
+            "entities": [
+              "entity.system.home"
+            ],
+            "actions": [
+              "ohos.want.action.home"
+            ]
+          }
+        ]
+      }
+    ],
+    "requestPermissions": [
+      { "name": "ohos.permission.INTERNET" },
+      { "name": "ohos.permission.GET_WIFI_INFO" },
+      {
+        "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",
+        "reason": "$string:system_float_window",
+        "usedScene": { "abilities": ["EntryAbility","ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
+        "reason": "$string:custom_capture",
+        "usedScene": { "abilities": ["EntryAbility","ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.CAPTURE_SCREEN",
+        "reason": "$string:capture_screen",
+        "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE",
+        "reason": "$string:capture_screen_auth",
+        "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.KEEP_BACKGROUND_RUNNING",
+        "reason": "$string:keep_bg",
+        "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.START_ABILITIES_FROM_BACKGROUND",
+        "reason": "$string:start_ability_back_reason",
+        "usedScene": {
+          "abilities": ["ScrcpyService"],
+          "when": "always"
+        }
+      },
+      {
+        "name": "ohos.permission.INJECT_INPUT_EVENT",
+        "reason": "$string:inject_input_event",
+        "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",
+        "reason": "$string:install_bundle_list",
+        "usedScene": {
+          "abilities": [
+            "ScrcpyService"
+          ]
+        }
+      },
+      { "name": "ohos.permission.RUNNING_LOCK" },
+      {
+        "name": "ohos.permission.ACCESS_NOTIFICATION_POLICY",
+        "reason": "$string:volume_control",
+        "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
+      }
+
+    ],
+    "extensionAbilities": [
+      {
+        "name": "EntryBackupAbility",
+        "srcEntry": "./ets/entrybackupability/EntryBackupAbility.ets",
+        "type": "backup",
+        "exported": false,
+        "metadata": [
+          {
+            "name": "ohos.extension.backup",
+            "resource": "$profile:backup_config"
+          }
+        ]
+      },
+      {
+        "name": "ScrcpyService",
+        "srcEntry": "./ets/scrcpyservice/ScrcpyService.ets",
+        "type": "service",
+        "exported": true
+      }
+    ]
+  }
+}

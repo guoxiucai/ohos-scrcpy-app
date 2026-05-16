@@ -1,0 +1,57 @@
+# ===================== 通用 =====================
+.DS_Store
+Thumbs.db
+*.log
+*.swp
+*.class
+*.pyc
+
+# ===================== OpenHarmony 服务端 =====================
+scrcpy_server/node_modules/
+scrcpy_server/oh_modules/
+scrcpy_server/local.properties
+scrcpy_server/.idea/
+scrcpy_server/.hvigor/
+scrcpy_server/.cxx/
+scrcpy_server/.clangd
+scrcpy_server/.clang-format
+scrcpy_server/.clang-tidy
+scrcpy_server/.appanalyzer/
+scrcpy_server/**/build/
+scrcpy_server/**/.test/
+scrcpy_server/**/BuildProfile.ets
+
+# ===================== Flutter 客户端 =====================
+scrcpy_client_flutter/.dart_tool/
+scrcpy_client_flutter/.flutter-plugins
+scrcpy_client_flutter/.flutter-plugins-dependencies
+scrcpy_client_flutter/.pub-cache/
+scrcpy_client_flutter/.pub/
+scrcpy_client_flutter/build/
+scrcpy_client_flutter/.idea/
+scrcpy_client_flutter/*.iml
+scrcpy_client_flutter/*.ipr
+scrcpy_client_flutter/*.iws
+scrcpy_client_flutter/**/doc/api/
+
+# macOS Runner
+scrcpy_client_flutter/macos/**/Flutter/ephemeral/
+scrcpy_client_flutter/macos/**/Pods/
+scrcpy_client_flutter/macos/**/xcuserdata/
+scrcpy_client_flutter/macos/**/*.dgph
+
+# Windows Runner
+scrcpy_client_flutter/windows/**/*.suo
+scrcpy_client_flutter/windows/**/*.user
+scrcpy_client_flutter/windows/**/*.userosscache
+scrcpy_client_flutter/windows/**/*.sln.docstates
+scrcpy_client_flutter/windows/**/x64/
+scrcpy_client_flutter/windows/**/x86/
+scrcpy_client_flutter/windows/**/*.[Cc]ache
+
+# 符号表 / 混淆
+scrcpy_client_flutter/app.*.symbols
+scrcpy_client_flutter/app.*.map.json
+
+# 参考文档
+refer_doc/

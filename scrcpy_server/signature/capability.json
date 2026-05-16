@@ -1,0 +1,7 @@
+{
+  "bundleName": "com.ohos.scrcpy.server",
+  "app_signature": ["8E93863FC32EE238060BF69A9B37E2608FFFB21F93C862DD511CBAC9F30024B5"],
+  "allowAppUsePrivilegeExtension": true,
+  "keepAlive": true,
+  "allowAppDesktopIconHide": true
+}

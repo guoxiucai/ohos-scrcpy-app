@@ -1,0 +1,17 @@
+{
+  "string": [
+    { "name": "module_desc", "value": "module description" },
+    { "name": "EntryAbility_desc", "value": "description" },
+    { "name": "EntryAbility_label", "value": "Scrcpy Server" },
+    { "name": "system_float_window", "value": "悬浮窗" },
+    { "name": "custom_capture", "value": "截屏" },
+    { "name": "capture_screen", "value": "屏幕投屏采集" },
+    { "name": "capture_screen_auth", "value": "豁免授权" },
+    { "name": "keep_bg", "value": "保持后台采集与推流" },
+    { "name": "start_ability_back_reason", "value": "后台弹窗" },
+    { "name": "inject_input_event", "value": "模拟按键输入" },
+    { "name": "install_bundle_list", "value": "获取安装应用列表" },
+    { "name": "volume_control", "value": "调节系统音量" }
+
+  ]
+}
