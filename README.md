@@ -1,7 +1,7 @@
 # 鸿镜 HongJing
 
 <p align="center">
-  <img src="images/app_icon_small.png" width="128" alt="鸿镜 Logo"/>
+  <img src="https://cos-pro-pub.cvtestatic.com/seewo-school/f368b60c-2998-72b8-ff98-4b283971f1af" width="128" alt="鸿镜 Logo"/>
 </p>
 
 <p align="center">
@@ -27,8 +27,8 @@
 
 ## 效果演示
 
-![主界面](images/app_launch1.png)
-![主界面](images/app_launch2.png)
+![主界面](https://cos-pro-pub.cvtestatic.com/seewo-school/1d824417-f8e2-8e14-e94c-ad435158fe58)
+![主界面](https://cos-pro-pub.cvtestatic.com/seewo-school/d5181e88-5641-46e6-2902-b5c8af36f969)
 <!-- 更多截图或 GIF，在此补充 -->
 
 ## 功能特性
