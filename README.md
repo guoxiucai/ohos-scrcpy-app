@@ -5,6 +5,12 @@
 </p>
 
 <p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform">
+  <a href="https://github.com/guoxiucai/ohos-scrcpy-app/releases"><img src="https://img.shields.io/github/v/release/guoxiucai/ohos-scrcpy-app" alt="Release"></a>
+</p>
+
+<p align="center">
   <strong>OpenHarmony 设备实时投屏与远程控制工具</strong>
 </p>
 
@@ -78,7 +84,7 @@ hdc install -r OHScrcpyServer.hap
 
 ### 3. 启动客户端
 
-确保电脑与O喷Harmony设备已经通过HDC连接（USB或WiFi都可以）。
+确保电脑与 OpenHarmony 设备已经通过 HDC 连接（USB或WiFi都可以）。
 
 打开客户端应用 → 选择已连接的设备 → 点击连接，即可看到实时投屏画面。
 
