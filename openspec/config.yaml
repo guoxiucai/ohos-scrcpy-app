@@ -1,0 +1,53 @@
+schema: spec-driven
+
+context: |
+  # ohos-scrcpy-app - OpenHarmony 设备投屏 + HDC 调试工具
+
+  ## 技术栈
+  - 服务端：OpenHarmony ArkTS ServiceExtension + OH Native NAPI (C/C++ AVCodec)
+  - 客户端：Flutter 桌面应用 (macOS/Windows)，Dart + 平台原生插件
+  - 视频解码：macOS VideoToolbox / Windows MediaFoundation，通过 MethodChannel + FlutterTexture 上屏
+  - 通信：hdc fport TCP 端口转发，自定义二进制帧协议
+
+  ## 架构概要
+  - scrcpy_server/：OpenHarmony 系统应用，ServiceExtension 常驻服务，负责屏幕采集(OH Native AVScreenCapture)、H264 编码、TCP Server(端口53535)、触控注入
+  - scrcpy_client_flutter/：Flutter 桌面客户端，hdc CLI 包装、协议解码、原生硬解渲染、UI 控制面板
+
+  ## 关键约束
+  - HDC 调用：Process.run 调系统 hdc CLI，不做 FFI
+  - 视频解码：平台原生硬解，不用 media_kit / fvp / ffmpeg
+  - 传输通道：仅 hdc fport，不做设备 LAN 直连
+  - 服务端保活：仅靠 app.json5 keepAlive，不写 BootReceiver
+  - API 区间：compatibleSdkVersion 15，compileSdkVersion 20
+  - ArkTS 严格模式：禁止 any/unknown、禁止内联对象类型、禁止 shorthand 字面量
+
+  ## 编码规范
+  - 语言：所有文档、注释、提交信息使用简体中文
+  - 服务端：参考 /Users/qingwei/Library/OpenHarmony/Sdk/20/ets/api/ 下真实 d.ts
+  - 客户端：复用 state/app_state.dart 中央状态，不在 widget 里新建独立实例
+  - UI 改动后跑 flutter analyze；服务端改动后跑 hvigor 构建验证
+
+  ## 当前状态
+  - 已闭环：协议骨架、TCP 通路、客户端 UI、hdc 包装、macOS H264 解码、触控/亮度/音量控制、hap 安装、macOS 打包
+  - 待补：Linux 解码与打包
+
+rules:
+  proposal:
+    - 使用简体中文撰写
+    - 必须包含"非目标"部分，明确界定不做什么
+    - 涉及服务端改动时说明对 ArkTS 严格模式的兼容性
+    - 涉及客户端改动时说明受影响的平台（macOS/Windows/Linux）
+  design:
+    - 使用简体中文撰写
+    - 包含 ASCII 架构图或数据流图
+    - 说明与现有协议帧格式的兼容性（如涉及通信变更）
+    - 平台原生插件变更需分平台描述实现方案
+  specs:
+    - 使用简体中文撰写
+    - 接口定义使用代码块，标注语言（dart/ets/c）
+    - 协议相关 spec 需标注帧 type 编号和 payload 格式
+  tasks:
+    - 使用简体中文撰写
+    - 每个任务不超过 2 小时工作量
+    - 服务端和客户端任务分开，标注依赖关系
+    - 包含验证步骤（如何确认任务完成）
