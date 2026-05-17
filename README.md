@@ -1,7 +1,7 @@
 # 鸿镜 HongJing
 
 <p align="center">
-  <img src="images/app_icon.png" width="128" alt="鸿镜 Logo"/>
+  <img src="images/app_icon_small.png" width="128" alt="鸿镜 Logo"/>
 </p>
 
 <p align="center">
@@ -59,7 +59,7 @@
 
 ### 1. 下载预编译包
 
-从 [Releases](https://github.com/guoxiucai/ohos-scrcpy-app.git) 页面或 `release_packages/` 目录下载：
+从 [Releases](https://github.com/guoxiucai/ohos-scrcpy-app/releases) 页面或 `release_packages/` 目录下载：
 
 | 文件 | 说明 |
 |------|------|
@@ -78,9 +78,11 @@ hdc install -r OHScrcpyServer.hap
 
 ### 3. 启动客户端
 
+确保电脑与O喷Harmony设备已经通过HDC连接（USB或WiFi都可以）。
+
 打开客户端应用 → 选择已连接的设备 → 点击连接，即可看到实时投屏画面。
 
-确保 PC 上 `hdc` 命令可用（DevEco Studio 安装后自带，或单独安装 [HDC 工具](https://developer.huawei.com/consumer/cn/doc/harmonyos-guides-V5/ide-hdc-V5)）。
+客户端已经内置HDC工具，可以直接运行。（本地开发期间需要确保 PC PATH 上 `hdc` 命令可用）。
 
 ## 项目架构
 
@@ -133,14 +135,14 @@ AllowAppDesktopIconHide
 
 #### 写入系统白名单（需 root）
 
-设备上需写入两个系统配置文件，参考 `scrcpy_server/signature/` 目录下的模板，将 `app_signature` 换成你自己证书的指纹：
+设备上需写入两个系统配置文件，参考 `scrcpy_server/signature/` 目录下的模板。如果你自己替换了签名证书，需要将 `app_signature` 换成你自己证书的指纹：
 
 **`/system/etc/app/install_list_capability.json`** — 追加：
 
 ```json
 {
   "bundleName": "com.ohos.scrcpy.server",
-  "app_signature": ["<你的证书指纹>"],
+  "app_signature": ["8E93863FC32EE238060BF69A9B37E2608FFFB21F93C862DD511CBAC9F30024B5"],
   "allowAppUsePrivilegeExtension": true,
   "keepAlive": true,
   "allowAppDesktopIconHide": true
@@ -152,7 +154,7 @@ AllowAppDesktopIconHide
 ```json
 {
   "bundleName": "com.ohos.scrcpy.server",
-  "app_signature": ["<你的证书指纹>"],
+  "app_signature": ["8E93863FC32EE238060BF69A9B37E2608FFFB21F93C862DD511CBAC9F30024B5"],
   "permissions": [
     { "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",          "userCancellable": false },
     { "name": "ohos.permission.START_ABILITIES_FROM_BACKGROUND","userCancellable": false },
