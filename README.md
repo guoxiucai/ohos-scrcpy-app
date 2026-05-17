@@ -59,7 +59,7 @@
 
 ### 1. 下载预编译包
 
-从 [Releases](https://gitlab.gz.cvte.cn/CVTEHarmony/Tools/ohos-scrcpy-app) 页面或 `release_packages/` 目录下载：
+从 [Releases](https://github.com/guoxiucai/ohos-scrcpy-app.git) 页面或 `release_packages/` 目录下载：
 
 | 文件 | 说明 |
 |------|------|
