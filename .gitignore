@@ -55,3 +55,7 @@ scrcpy_client_flutter/app.*.map.json
 
 # 参考文档
 refer_doc/
+
+# ===================== CLI（Rust）=====================
+cli/target/
+cli/*.rs.bk

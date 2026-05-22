@@ -1,0 +1,5 @@
+[env]
+# SDL2 安装路径（brew install sdl2）
+LIBRARY_PATH = { value = "/opt/homebrew/lib", force = false }
+# 与已安装 SDL2 dylib 的目标 macOS 版本匹配
+MACOSX_DEPLOYMENT_TARGET = { value = "26.0", force = false }

@@ -1,0 +1,29 @@
+[package]
+name = "ohscrcpy"
+version = "0.1.0"
+edition = "2021"
+description = "OpenHarmony device screen mirroring CLI tool"
+
+[lib]
+name = "ohscrcpy"
+path = "src/lib.rs"
+
+[[bin]]
+name = "ohscrcpy"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+sdl2 = { version = "0.37", features = ["unsafe_textures"] }
+rust-embed = "8"
+byteorder = "1"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3"
+ctrlc = "3"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
