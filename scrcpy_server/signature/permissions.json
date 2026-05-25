@@ -27,6 +27,10 @@
     {
       "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",
       "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.INSTALL_BUNDLE",
+      "userCancellable": false
     }
   ]
 }

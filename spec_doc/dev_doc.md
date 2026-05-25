@@ -124,6 +124,14 @@
 客户端文本输入支持（当前实现是占位）：参考Open-AutoGLM-main/phone_agent/hdc这里的实现， 基于 hdc shell uitest uiInput inputText X Y Value实现，注意服务端坐标要转换成正式的设备坐标（未成功）
 鼠标滚动支持：参考Open-AutoGLM-main/phone_agent/hdc， 基于hdc shell uitest uiInput swipe实现，当鼠标滚动时，分别向上或向下滑动屏幕
 
+# 支持自动关联hap应用并拉起安装界面安装
+服务端scrcpy_server支持关联hap应用安装。当用户从文件浏览器点击hap类型的应用是 ，拉起的一个全屏Ability，引导用户进行hap的安装。安装界面枚举列出该hap应用申请的权限列表，用户可以“取消”和“安装”，安装过程强制覆盖安装，不管versionCodes是否偏低
+
+
+
+
+
+
 
 # Todo Roadmap
  - 客户端升级Flutter版本至3.41.9  --todo

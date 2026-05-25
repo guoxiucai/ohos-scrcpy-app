@@ -31,6 +31,29 @@
             ]
           }
         ]
+      },
+      {
+        "name": "HapInstallerAbility",
+        "srcEntry": "./ets/hapinstaller/HapInstallerAbility.ets",
+        "description": "$string:HapInstaller_desc",
+        "icon": "$media:layered_image",
+        "label": "$string:HapInstaller_label",
+        "startWindowIcon": "$media:startIcon",
+        "startWindowBackground": "$color:start_window_background",
+        "exported": true,
+        "skills": [
+          {
+            "actions": [
+              "ohos.want.action.viewData"
+            ],
+            "uris": [
+              {
+                "scheme": "file",
+                "utd": "openharmony.hap"
+              }
+            ]
+          }
+        ]
       }
     ],
     "requestPermissions": [
@@ -88,6 +111,11 @@
         "name": "ohos.permission.ACCESS_NOTIFICATION_POLICY",
         "reason": "$string:volume_control",
         "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.INSTALL_BUNDLE",
+        "reason": "$string:install_bundle_reason",
+        "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
       }
 
     ],

@@ -11,7 +11,10 @@
     { "name": "start_ability_back_reason", "value": "后台弹窗" },
     { "name": "inject_input_event", "value": "模拟按键输入" },
     { "name": "install_bundle_list", "value": "获取安装应用列表" },
-    { "name": "volume_control", "value": "调节系统音量" }
+    { "name": "volume_control", "value": "调节系统音量" },
+    { "name": "install_bundle_reason", "value": "安装应用" },
+    { "name": "HapInstaller_desc", "value": "HAP 应用安装器" },
+    { "name": "HapInstaller_label", "value": "应用安装" }
 
   ]
 }
