@@ -21,6 +21,7 @@ interface HapJson {
 
 interface ModuleInfo {
   name: string;
+  mainElement: string;
   requestPermissions: Array<PermissionItem>;
 }
 
@@ -42,6 +43,7 @@ struct HapInstallPage {
   @State installState: InstallState = 'confirm';
   @State displayName: string = '';
   @State bundleName: string = '';
+  @State mainElement: string = '';
   @State versionName: string = '';
   @State permissions: Array<string> = [];
   @State errorMessage: string = '';
@@ -99,6 +101,7 @@ struct HapInstallPage {
 
       this.bundleName = hapJson.app.bundleName ?? '';
       this.versionName = hapJson.app.versionName ?? '';
+      this.mainElement = hapJson.module.mainElement ?? '';
       this.displayName = this.versionName.length > 0 ? `${fileName}(${this.versionName})` : fileName;
       hilog.info(DOMAIN, TAG, 'displayName: %{public}s, bundleName: %{public}s', this.displayName, this.bundleName);
 
@@ -187,7 +190,7 @@ struct HapInstallPage {
     const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     const want: Want = {
       bundleName: this.bundleName,
-      abilityName: 'MainAbility'
+      abilityName: this.mainElement
     };
     ctx.startAbility(want).then(() => {
       ctx.terminateSelf();
@@ -300,9 +303,9 @@ struct HapInstallPage {
   @Builder
   buildSuccess() {
     Column({ space: 16 }) {
-      Text('✓')
-        .fontSize(48)
-        .fontColor('#4CAF50')
+      Image($r('app.media.ic_success'))
+        .width(48)
+        .height(48)
 
       Text('安装成功')
         .fontSize(18)
@@ -333,9 +336,9 @@ struct HapInstallPage {
   @Builder
   buildFailed() {
     Column({ space: 16 }) {
-      Text('✗')
-        .fontSize(48)
-        .fontColor('#F44336')
+      Image($r('app.media.ic_fail'))
+        .width(48)
+        .height(48)
 
       Text('安装失败')
         .fontSize(18)
