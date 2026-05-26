@@ -1,0 +1,12 @@
+{
+  "UniformDataTypeDeclarations": [
+    {
+      "TypeId": "openharmony.hap",
+      "BelongingToTypes": ["general.object"],
+      "FilenameExtensions": [".hap"],
+      "MIMETypes": ["application/vnd.openharmony.package-archive"],
+      "Description": "OpenHarmony HAP Package",
+      "ReferenceURL": ""
+    }
+  ]
+}

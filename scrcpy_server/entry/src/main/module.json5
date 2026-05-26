@@ -50,6 +50,10 @@
               {
                 "scheme": "file",
                 "utd": "openharmony.hap"
+              },
+              {
+                "scheme": "file",
+                "type": "application/vnd.openharmony.package-archive"
               }
             ]
           }
@@ -114,6 +118,16 @@
       },
       {
         "name": "ohos.permission.INSTALL_BUNDLE",
+        "reason": "$string:install_bundle_reason",
+        "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.FILE_ACCESS_MANAGER",
+        "reason": "$string:install_bundle_reason",
+        "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
+      },
+      {
+        "name": "ohos.permission.STORAGE_MANAGER",
         "reason": "$string:install_bundle_reason",
         "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
       }

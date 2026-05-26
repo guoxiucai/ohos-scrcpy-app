@@ -1,10 +1,11 @@
 import { common, Want } from '@kit.AbilityKit';
 import { hilog } from '@kit.PerformanceAnalysisKit';
-import { fileIo } from '@kit.CoreFileKit';
+import { fileIo, fileUri } from '@kit.CoreFileKit';
 import { zlib } from '@kit.BasicServicesKit';
 import installer from '@ohos.bundle.installer';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
+import { image } from '@kit.ImageKit';
 
 const DOMAIN: number = 0xA001;
 const TAG: string = 'HapInstall';
@@ -13,7 +14,8 @@ interface PermissionItem {
   name: string;
 }
 
-interface ModuleJson {
+interface HapJson {
+  app: AppInfo;
   module: ModuleInfo;
 }
 
@@ -22,12 +24,9 @@ interface ModuleInfo {
   requestPermissions: Array<PermissionItem>;
 }
 
-interface AppJson {
-  app: AppInfo;
-}
-
 interface AppInfo {
   bundleName: string;
+  icon: string;
   versionName: string;
   versionCode: number;
 }
@@ -40,12 +39,13 @@ const storage = LocalStorage.getShared();
 @Component
 struct HapInstallPage {
   @LocalStorageProp('hapUri') hapUri: string = '';
-  @LocalStorageProp('context') abilityContext: common.UIAbilityContext | null = null;
   @State installState: InstallState = 'confirm';
+  @State displayName: string = '';
   @State bundleName: string = '';
   @State versionName: string = '';
   @State permissions: Array<string> = [];
   @State errorMessage: string = '';
+  @State iconPixelMap: image.PixelMap | null = null;
   @State hapFilePath: string = '';
   private tempDir: string = '';
 
@@ -53,47 +53,77 @@ struct HapInstallPage {
     this.parseHap();
   }
 
+  private getFileNameWithoutExt(uri: string): string {
+    let name: string = uri;
+    const slashIdx: number = name.lastIndexOf('/');
+    if (slashIdx >= 0) {
+      name = name.substring(slashIdx + 1);
+    }
+    name = decodeURIComponent(name);
+    if (name.toLowerCase().endsWith('.hap')) {
+      name = name.substring(0, name.length - 4);
+    }
+    return name;
+  }
+
   private async parseHap(): Promise<void> {
     try {
-      const ctx: common.UIAbilityContext = this.abilityContext as common.UIAbilityContext;
-      this.tempDir = ctx.tempDir + '/hap_extract_' + Date.now().toString();
       const uri: string = this.hapUri;
+      const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
+      this.tempDir = ctx.tempDir + '/hap_extract_' + Date.now().toString();
+      const fileName: string = this.getFileNameWithoutExt(uri);
+
       let filePath: string = '';
       if (uri.startsWith('file://')) {
-        filePath = uri.replace('file://', '');
+        const fileUriObj = new fileUri.FileUri(uri);
+        filePath = fileUriObj.path;
       } else {
         filePath = uri;
       }
       this.hapFilePath = filePath;
+      hilog.info(DOMAIN, TAG, 'hapFilePath: %{public}s', filePath);
+
       await fileIo.mkdir(this.tempDir);
-      const options: zlib.Options = {};
-      await zlib.decompressFile(filePath, this.tempDir, options);
-      const moduleJsonPath: string = this.tempDir + '/module.json5';
-      const moduleExists: boolean = fileIo.accessSync(moduleJsonPath);
-      if (!moduleExists) {
-        this.errorMessage = '不是有效的 HAP 文件（缺少 module.json5）';
+      await zlib.decompressFile(filePath, this.tempDir, {} as zlib.Options);
+      hilog.info(DOMAIN, TAG, 'decompress done');
+
+      const moduleJsonPath: string = this.tempDir + '/module.json';
+      if (!fileIo.accessSync(moduleJsonPath)) {
+        this.errorMessage = '不是有效的 HAP 文件（缺少 module.json）';
         this.installState = 'failed';
         return;
       }
-      const moduleContent: string = await this.readFileAsString(moduleJsonPath);
-      const moduleJson: ModuleJson = JSON.parse(moduleContent) as ModuleJson;
-      const permList: Array<PermissionItem> = moduleJson.module.requestPermissions ?? [];
+
+      const content: string = await this.readFileAsString(moduleJsonPath);
+      const hapJson: HapJson = JSON.parse(content) as HapJson;
+
+      this.bundleName = hapJson.app.bundleName ?? '';
+      this.versionName = hapJson.app.versionName ?? '';
+      this.displayName = this.versionName.length > 0 ? `${fileName}(${this.versionName})` : fileName;
+      hilog.info(DOMAIN, TAG, 'displayName: %{public}s, bundleName: %{public}s', this.displayName, this.bundleName);
+
+      const permList: Array<PermissionItem> = hapJson.module.requestPermissions ?? [];
       const permNames: Array<string> = [];
       for (let i: number = 0; i < permList.length; i++) {
         permNames.push(permList[i].name);
       }
       this.permissions = permNames;
 
-      const appJsonPath: string = this.tempDir + '/app.json5';
-      const appExists: boolean = fileIo.accessSync(appJsonPath);
-      if (appExists) {
-        const appContent: string = await this.readFileAsString(appJsonPath);
-        const appJson: AppJson = JSON.parse(appContent) as AppJson;
-        this.bundleName = appJson.app.bundleName ?? '';
-        this.versionName = appJson.app.versionName ?? '';
-      } else {
-        this.bundleName = moduleJson.module.name ?? '未知';
-        this.versionName = '';
+      const iconRef: string = hapJson.app.icon ?? '';
+      if (iconRef.length > 0) {
+        let iconName: string = iconRef;
+        if (iconName.startsWith('$media:')) {
+          iconName = iconName.substring(7);
+        }
+        const iconPath: string = this.tempDir + '/resources/base/media/' + iconName + '.png';
+        hilog.info(DOMAIN, TAG, 'icon path: %{public}s', iconPath);
+        if (fileIo.accessSync(iconPath)) {
+          const iconFile: fileIo.File = fileIo.openSync(iconPath, fileIo.OpenMode.READ_ONLY);
+          const imageSource: image.ImageSource = image.createImageSource(iconFile.fd);
+          this.iconPixelMap = await imageSource.createPixelMap();
+          fileIo.closeSync(iconFile);
+          hilog.info(DOMAIN, TAG, 'icon loaded');
+        }
       }
     } catch (err) {
       hilog.error(DOMAIN, TAG, 'parseHap failed: %{public}s', JSON.stringify(err));
@@ -149,12 +179,12 @@ struct HapInstallPage {
   }
 
   private closeSelf(): void {
-    const ctx: common.UIAbilityContext = this.abilityContext as common.UIAbilityContext;
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     ctx.terminateSelf();
   }
 
   private openApp(): void {
-    const ctx: common.UIAbilityContext = this.abilityContext as common.UIAbilityContext;
+    const ctx: common.UIAbilityContext = getContext(this) as common.UIAbilityContext;
     const want: Want = {
       bundleName: this.bundleName,
       abilityName: 'MainAbility'
@@ -188,19 +218,19 @@ struct HapInstallPage {
   @Builder
   buildConfirm() {
     Column({ space: 16 }) {
-      Image($r('app.media.startIcon'))
-        .width(64)
-        .height(64)
+      if (this.iconPixelMap !== null) {
+        Image(this.iconPixelMap)
+          .width(64)
+          .height(64)
+      } else {
+        Image($r('app.media.startIcon'))
+          .width(64)
+          .height(64)
+      }
 
-      Text(this.bundleName)
+      Text(this.displayName)
         .fontSize(18)
         .fontWeight(FontWeight.Bold)
-
-      if (this.versionName.length > 0) {
-        Text('版本：' + this.versionName)
-          .fontSize(14)
-          .fontColor('#666666')
-      }
 
       Column({ space: 8 }) {
         Text('申请的权限：')
