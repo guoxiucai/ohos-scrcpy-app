@@ -36,6 +36,11 @@ type InstallState = 'confirm' | 'installing' | 'success' | 'failed';
 
 const storage = LocalStorage.getShared();
 
+/** 卡片最大宽度（横屏居中） */
+const CARD_MAX_WIDTH: number = 520;
+/** 权限列表最大高度 */
+const PERM_LIST_MAX_HEIGHT: number = 260;
+
 @Entry(storage)
 @Component
 struct HapInstallPage {
@@ -49,6 +54,7 @@ struct HapInstallPage {
   @State errorMessage: string = '';
   @State iconPixelMap: image.PixelMap | null = null;
   @State hapFilePath: string = '';
+  @State showPermissions: boolean = false;
   private tempDir: string = '';
 
   aboutToAppear(): void {
@@ -200,163 +206,350 @@ struct HapInstallPage {
     });
   }
 
+  private togglePermissions(): void {
+    this.showPermissions = !this.showPermissions;
+  }
+
   build() {
-    Column() {
-      if (this.installState === 'confirm') {
-        this.buildConfirm();
-      } else if (this.installState === 'installing') {
-        this.buildInstalling();
-      } else if (this.installState === 'success') {
-        this.buildSuccess();
-      } else {
-        this.buildFailed();
+    Stack() {
+      // 底层：浅灰背景（横屏两边留白区域）
+      Column()
+        .width('100%')
+        .height('100%')
+        .backgroundColor('#F2F3F5')
+
+      // 居中白色卡片
+      Column() {
+        if (this.installState === 'confirm') {
+          this.buildConfirm();
+        } else if (this.installState === 'installing') {
+          this.buildInstalling();
+        } else if (this.installState === 'success') {
+          this.buildSuccess();
+        } else {
+          this.buildFailed();
+        }
       }
+      .width('100%')
+      .height('100%')
+      .justifyContent(FlexAlign.Center)
+      .alignItems(HorizontalAlign.Center)
+      .padding({ left: 24, right: 24 })
     }
     .width('100%')
     .height('100%')
-    .justifyContent(FlexAlign.Center)
-    .padding(24)
   }
 
   @Builder
   buildConfirm() {
-    Column({ space: 16 }) {
-      if (this.iconPixelMap !== null) {
-        Image(this.iconPixelMap)
-          .width(64)
-          .height(64)
-      } else {
-        Image($r('app.media.startIcon'))
-          .width(64)
-          .height(64)
-      }
-
-      Text(this.displayName)
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
-
-      Column({ space: 8 }) {
-        Text('申请的权限：')
-          .fontSize(14)
-          .fontWeight(FontWeight.Medium)
-          .alignSelf(ItemAlign.Start)
-
-        if (this.permissions.length === 0) {
-          Text('无')
-            .fontSize(13)
-            .fontColor('#999999')
-            .alignSelf(ItemAlign.Start)
+    Column() {
+      // 卡片
+      Column() {
+        // ---- 图标 ----
+        if (this.iconPixelMap !== null) {
+          Image(this.iconPixelMap)
+            .width(72)
+            .height(72)
+            .borderRadius(16)
+            .margin({ bottom: 16 })
         } else {
-          List() {
-            ForEach(this.permissions, (perm: string) => {
-              ListItem() {
-                Text('• ' + perm)
-                  .fontSize(13)
-                  .fontColor('#333333')
-              }
-            })
+          Image($r('app.media.startIcon'))
+            .width(72)
+            .height(72)
+            .borderRadius(16)
+            .margin({ bottom: 16 })
+        }
+
+        // ---- 应用名 ----
+        Text(this.displayName)
+          .fontSize(18)
+          .fontWeight(FontWeight.Bold)
+          .fontColor('#1A1A1A')
+          .textAlign(TextAlign.Center)
+          .maxLines(2)
+          .textOverflow({ overflow: TextOverflow.Ellipsis })
+          .margin({ bottom: 4 })
+
+        // ---- 包名 ----
+        if (this.bundleName.length > 0) {
+          Text(this.bundleName)
+            .fontSize(12)
+            .fontColor('#999999')
+            .fontFamily('monospace')
+            .textAlign(TextAlign.Center)
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ bottom: 20 })
+        }
+
+        // ---- 分割线 ----
+        Divider()
+          .strokeWidth(1)
+          .color('#EEEEEE')
+          .margin({ bottom: 16 })
+
+        // ---- 权限区域 ----
+        Column() {
+          Row() {
+            Text('当前应用申请权限 ' + this.permissions.length.toString() + ' 个')
+              .fontSize(13)
+              .fontColor('#555555')
+              .fontWeight(FontWeight.Medium)
+              .layoutWeight(1)
+
+            Text(this.showPermissions ? '收起 ▲' : '展开 ▼')
+              .fontSize(12)
+              .fontColor('#007DFF')
+              .onClick(() => {
+                this.togglePermissions();
+              })
           }
           .width('100%')
-          .layoutWeight(1)
+          .padding({ top: 4, bottom: this.showPermissions ? 8 : 4 })
+          .onClick(() => {
+            this.togglePermissions();
+          })
+
+          if (this.showPermissions) {
+            if (this.permissions.length === 0) {
+              Text('无需任何权限')
+                .fontSize(12)
+                .fontColor('#999999')
+                .width('100%')
+                .padding({ left: 4 })
+            } else {
+              List() {
+                ForEach(this.permissions, (perm: string) => {
+                  ListItem() {
+                    Row() {
+                      Text('•')
+                        .fontSize(14)
+                        .fontColor('#007DFF')
+                        .margin({ right: 8 })
+
+                      Text(perm)
+                        .fontSize(12)
+                        .fontColor('#333333')
+                        .fontFamily('monospace')
+                        .layoutWeight(1)
+                    }
+                    .width('100%')
+                    .padding({ top: 5, bottom: 5 })
+                  }
+                })
+              }
+              .width('100%')
+              .constraintSize({ maxHeight: PERM_LIST_MAX_HEIGHT })
+              .scrollBar(BarState.Auto)
+              .backgroundColor('#F8F9FA')
+              .borderRadius(8)
+              .padding({ left: 12, right: 12, top: 6, bottom: 6 })
+            }
+          }
         }
+        .width('100%')
+
+        // ---- 按钮区 ----
+        Row({ space: 12 }) {
+          Button('取消')
+            .layoutWeight(1)
+            .height(42)
+            .backgroundColor('#F0F0F0')
+            .fontColor('#555555')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .borderRadius(8)
+            .onClick(() => {
+              this.closeSelf();
+            })
+
+          Button('安装')
+            .layoutWeight(1)
+            .height(42)
+            .backgroundColor('#007DFF')
+            .fontColor('#FFFFFF')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .borderRadius(8)
+            .onClick(() => {
+              this.doInstall();
+            })
+        }
+        .width('100%')
+        .margin({ top: 20 })
       }
       .width('100%')
-      .layoutWeight(1)
-      .padding({ top: 16 })
-
-      Row({ space: 16 }) {
-        Button('取消')
-          .width('40%')
-          .height(40)
-          .backgroundColor('#E0E0E0')
-          .fontColor('#333333')
-          .onClick(() => {
-            this.closeSelf();
-          })
-
-        Button('安装')
-          .width('40%')
-          .height(40)
-          .backgroundColor('#007DFF')
-          .fontColor('#FFFFFF')
-          .onClick(() => {
-            this.doInstall();
-          })
-      }
+      .constraintSize({ maxWidth: CARD_MAX_WIDTH })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(16)
+      .padding({ left: 28, right: 28, top: 36, bottom: 28 })
+      .shadow({
+        radius: 16,
+        color: '#00000010',
+        offsetY: 4
+      })
     }
     .width('100%')
-    .height('100%')
+    .alignItems(HorizontalAlign.Center)
   }
 
   @Builder
   buildInstalling() {
-    Column({ space: 16 }) {
-      LoadingProgress()
-        .width(48)
-        .height(48)
+    Column() {
+      Column() {
+        LoadingProgress()
+          .width(52)
+          .height(52)
+          .color('#007DFF')
+          .margin({ bottom: 20 })
 
-      Text('正在安装...')
-        .fontSize(16)
+        Text('正在安装…')
+          .fontSize(16)
+          .fontColor('#333333')
+          .fontWeight(FontWeight.Medium)
+      }
+      .width('100%')
+      .constraintSize({ maxWidth: CARD_MAX_WIDTH })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(16)
+      .padding({ left: 28, right: 28, top: 48, bottom: 48 })
+      .alignItems(HorizontalAlign.Center)
+      .shadow({
+        radius: 16,
+        color: '#00000010',
+        offsetY: 4
+      })
     }
+    .width('100%')
+    .alignItems(HorizontalAlign.Center)
   }
 
   @Builder
   buildSuccess() {
-    Column({ space: 16 }) {
-      Image($r('app.media.ic_success'))
-        .width(48)
-        .height(48)
+    Column() {
+      Column() {
+        Column() {
+          Image($r('app.media.ic_success'))
+            .width(56)
+            .height(56)
+            .margin({ bottom: 12 })
 
-      Text('安装成功')
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
+          Text('安装成功')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#1A1A1A')
+            .margin({ bottom: 4 })
 
-      Row({ space: 16 }) {
-        Button('关闭')
-          .width('40%')
-          .height(40)
-          .backgroundColor('#E0E0E0')
-          .fontColor('#333333')
-          .onClick(() => {
-            this.closeSelf();
-          })
+          Text(this.displayName)
+            .fontSize(13)
+            .fontColor('#888888')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ bottom: 28 })
+        }
+        .alignItems(HorizontalAlign.Center)
 
-        Button('打开')
-          .width('40%')
-          .height(40)
-          .backgroundColor('#007DFF')
-          .fontColor('#FFFFFF')
-          .onClick(() => {
-            this.openApp();
-          })
+        Row({ space: 12 }) {
+          Button('关闭')
+            .layoutWeight(1)
+            .height(42)
+            .backgroundColor('#F0F0F0')
+            .fontColor('#555555')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .borderRadius(8)
+            .onClick(() => {
+              this.closeSelf();
+            })
+
+          Button('打开应用')
+            .layoutWeight(1)
+            .height(42)
+            .backgroundColor('#007DFF')
+            .fontColor('#FFFFFF')
+            .fontSize(14)
+            .fontWeight(FontWeight.Medium)
+            .borderRadius(8)
+            .onClick(() => {
+              this.openApp();
+            })
+        }
+        .width('100%')
       }
+      .width('100%')
+      .constraintSize({ maxWidth: CARD_MAX_WIDTH })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(16)
+      .padding({ left: 28, right: 28, top: 36, bottom: 28 })
+      .shadow({
+        radius: 16,
+        color: '#00000010',
+        offsetY: 4
+      })
     }
+    .width('100%')
+    .alignItems(HorizontalAlign.Center)
   }
 
   @Builder
   buildFailed() {
-    Column({ space: 16 }) {
-      Image($r('app.media.ic_fail'))
-        .width(48)
-        .height(48)
+    Column() {
+      Column() {
+        Column() {
+          Image($r('app.media.ic_fail'))
+            .width(56)
+            .height(56)
+            .margin({ bottom: 12 })
 
-      Text('安装失败')
-        .fontSize(18)
-        .fontWeight(FontWeight.Bold)
+          Text('安装失败')
+            .fontSize(20)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#1A1A1A')
+            .margin({ bottom: 4 })
 
-      Text(this.errorMessage)
-        .fontSize(13)
-        .fontColor('#666666')
-        .textAlign(TextAlign.Center)
+          Text(this.displayName)
+            .fontSize(13)
+            .fontColor('#888888')
+            .maxLines(1)
+            .textOverflow({ overflow: TextOverflow.Ellipsis })
+            .margin({ bottom: 20 })
+        }
+        .alignItems(HorizontalAlign.Center)
 
-      Button('关闭')
-        .width('40%')
-        .height(40)
-        .backgroundColor('#E0E0E0')
-        .fontColor('#333333')
-        .onClick(() => {
-          this.closeSelf();
-        })
+        Text(this.errorMessage)
+          .fontSize(12)
+          .fontColor('#E05555')
+          .textAlign(TextAlign.Center)
+          .width('100%')
+          .padding({ top: 14, bottom: 14, left: 16, right: 16 })
+          .backgroundColor('#FFF5F5')
+          .borderRadius(8)
+          .margin({ bottom: 20 })
+
+        Button('关闭')
+          .width('100%')
+          .height(42)
+          .backgroundColor('#F0F0F0')
+          .fontColor('#555555')
+          .fontSize(14)
+          .fontWeight(FontWeight.Medium)
+          .borderRadius(8)
+          .onClick(() => {
+            this.closeSelf();
+          })
+      }
+      .width('100%')
+      .constraintSize({ maxWidth: CARD_MAX_WIDTH })
+      .backgroundColor('#FFFFFF')
+      .borderRadius(16)
+      .padding({ left: 28, right: 28, top: 36, bottom: 28 })
+      .shadow({
+        radius: 16,
+        color: '#00000010',
+        offsetY: 4
+      })
     }
+    .width('100%')
+    .alignItems(HorizontalAlign.Center)
   }
 }
