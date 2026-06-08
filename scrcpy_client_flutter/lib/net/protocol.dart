@@ -225,6 +225,7 @@ class OhKeyCode {
   static const int comma = 2043;
   static const int period = 2044;
   static const int altLeft = 2045;
+  static const int altRight = 2046;
   static const int shiftLeft = 2047;
   static const int shiftRight = 2048;
   static const int tab = 2049;
@@ -240,14 +241,43 @@ class OhKeyCode {
   static const int semicolon = 2062;
   static const int apostrophe = 2063;
   static const int slash = 2064;
+  static const int pageUp = 2068;
+  static const int pageDown = 2069;
   static const int escape = 2070;
   static const int forwardDel = 2071; // Delete
   static const int ctrlLeft = 2072;
   static const int ctrlRight = 2073;
   static const int capsLock = 2074;
+  static const int scrollLock = 2075;
+  static const int metaLeft = 2076;
+  static const int metaRight = 2077;
+  static const int sysrq = 2079;      // PrintScreen
+  static const int moveHome = 2081;   // 键盘 Home
+  static const int moveEnd = 2082;    // 键盘 End
+  static const int insert = 2083;     // Insert
   static const int f1 = 2090;
-  static const int home = 1;
-  static const int back = 2;
+  static const int numLock = 2102;
+  static const int numpad0 = 2103;
+  static const int numpad1 = 2104;
+  static const int numpad2 = 2105;
+  static const int numpad3 = 2106;
+  static const int numpad4 = 2107;
+  static const int numpad5 = 2108;
+  static const int numpad6 = 2109;
+  static const int numpad7 = 2110;
+  static const int numpad8 = 2111;
+  static const int numpad9 = 2112;
+  static const int numpadDivide = 2113;
+  static const int numpadMultiply = 2114;
+  static const int numpadSubtract = 2115;
+  static const int numpadAdd = 2116;
+  static const int numpadDot = 2117;
+  static const int numpadComma = 2118;
+  static const int numpadEnter = 2119;
+  static const int numpadEquals = 2120;
+  // 导航功能键（与 OH KeyCode 标准值对齐）
+  static const int home = 1;          // 系统 Home 键
+  static const int back = 2;          // 系统 Back 键
 }
 
 /// 切包解析器

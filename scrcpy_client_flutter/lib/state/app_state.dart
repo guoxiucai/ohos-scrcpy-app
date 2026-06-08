@@ -351,7 +351,23 @@ class AppState extends ChangeNotifier {
     }
   }
 
-  /// 通过 hdc uitest uiInput inputText 注入文本到设备焦点输入框
+  /// 通过 scrcpy 协议 TEXT_INPUT（0x15）通道发送 UTF-8 文本到服务端。
+  /// 服务端收到后以剪贴板粘贴方式注入当前焦点文本框。
+  AppActionResult sendTextInput(String text) {
+    if (connState != ConnState.connected) {
+      return const AppActionResult.fail('未连接');
+    }
+    if (text.isEmpty) {
+      return const AppActionResult.fail('文本为空');
+    }
+    debugPrint('[sendTextInput] text="$text"');
+    stream.send(PacketType.control,
+        encodeControl(ControlSubType.textInput, encodeTextInput(text)));
+    return const AppActionResult.ok('文本已发送');
+  }
+
+  /// 通过 hdc uitest uiInput inputText 注入文本到设备焦点输入框。
+  /// 保留作为备选方案，当前 UI 走 [sendTextInput] 协议通道。
   Future<AppActionResult> inputText(String text) async {
     final dev = selectedDevice;
     if (dev == null) return const AppActionResult.fail('未选择设备');

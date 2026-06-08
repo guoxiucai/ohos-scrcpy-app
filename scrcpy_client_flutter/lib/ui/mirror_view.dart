@@ -23,30 +23,56 @@ class _MirrorViewState extends State<MirrorView> {
   final Map<int, int> _pointerButtonMap = {};
   final FocusNode _focusNode = FocusNode();
   bool _trackpadScrolling = false;
+  ConnState _prevConnState = ConnState.idle;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.state.addListener(_onStateChanged);
+  }
 
   @override
   void dispose() {
+    widget.state.removeListener(_onStateChanged);
     _focusNode.dispose();
     super.dispose();
   }
 
+  void _onStateChanged() {
+    final current = widget.state.connState;
+    // 仅在从非连接状态变为已连接时请求焦点，避免每次 notifyListeners 都抢走焦点
+    if (_prevConnState != ConnState.connected && current == ConnState.connected) {
+      _focusNode.requestFocus();
+    }
+    _prevConnState = current;
+  }
+
   int? _mapKey(LogicalKeyboardKey key) {
+    // 特殊功能键
     if (key == LogicalKeyboardKey.space) return OhKeyCode.space;
     if (key == LogicalKeyboardKey.enter) return OhKeyCode.enter;
     if (key == LogicalKeyboardKey.tab) return OhKeyCode.tab;
     if (key == LogicalKeyboardKey.escape) return OhKeyCode.escape;
     if (key == LogicalKeyboardKey.backspace) return OhKeyCode.del;
     if (key == LogicalKeyboardKey.delete) return OhKeyCode.forwardDel;
+    // 方向键
     if (key == LogicalKeyboardKey.arrowUp) return OhKeyCode.dpadUp;
     if (key == LogicalKeyboardKey.arrowDown) return OhKeyCode.dpadDown;
     if (key == LogicalKeyboardKey.arrowLeft) return OhKeyCode.dpadLeft;
     if (key == LogicalKeyboardKey.arrowRight) return OhKeyCode.dpadRight;
+    // 修饰键
     if (key == LogicalKeyboardKey.shiftLeft) return OhKeyCode.shiftLeft;
     if (key == LogicalKeyboardKey.shiftRight) return OhKeyCode.shiftRight;
     if (key == LogicalKeyboardKey.controlLeft) return OhKeyCode.ctrlLeft;
     if (key == LogicalKeyboardKey.controlRight) return OhKeyCode.ctrlRight;
     if (key == LogicalKeyboardKey.altLeft) return OhKeyCode.altLeft;
+    if (key == LogicalKeyboardKey.altRight) return OhKeyCode.altRight;
+    if (key == LogicalKeyboardKey.metaLeft) return OhKeyCode.metaLeft;
+    if (key == LogicalKeyboardKey.metaRight) return OhKeyCode.metaRight;
     if (key == LogicalKeyboardKey.capsLock) return OhKeyCode.capsLock;
+    if (key == LogicalKeyboardKey.numLock) return OhKeyCode.numLock;
+    if (key == LogicalKeyboardKey.scrollLock) return OhKeyCode.scrollLock;
+    // 独立符号键
     if (key == LogicalKeyboardKey.minus) return OhKeyCode.minus;
     if (key == LogicalKeyboardKey.equal) return OhKeyCode.equals;
     if (key == LogicalKeyboardKey.bracketLeft) return OhKeyCode.leftBracket;
@@ -58,6 +84,32 @@ class _MirrorViewState extends State<MirrorView> {
     if (key == LogicalKeyboardKey.period) return OhKeyCode.period;
     if (key == LogicalKeyboardKey.slash) return OhKeyCode.slash;
     if (key == LogicalKeyboardKey.backquote) return OhKeyCode.grave;
+    // 导航键
+    if (key == LogicalKeyboardKey.pageUp) return OhKeyCode.pageUp;
+    if (key == LogicalKeyboardKey.pageDown) return OhKeyCode.pageDown;
+    if (key == LogicalKeyboardKey.home) return OhKeyCode.moveHome;
+    if (key == LogicalKeyboardKey.end) return OhKeyCode.moveEnd;
+    if (key == LogicalKeyboardKey.insert) return OhKeyCode.insert;
+    if (key == LogicalKeyboardKey.printScreen) return OhKeyCode.sysrq;
+    // 数字小键盘
+    if (key == LogicalKeyboardKey.numpad0) return OhKeyCode.numpad0;
+    if (key == LogicalKeyboardKey.numpad1) return OhKeyCode.numpad1;
+    if (key == LogicalKeyboardKey.numpad2) return OhKeyCode.numpad2;
+    if (key == LogicalKeyboardKey.numpad3) return OhKeyCode.numpad3;
+    if (key == LogicalKeyboardKey.numpad4) return OhKeyCode.numpad4;
+    if (key == LogicalKeyboardKey.numpad5) return OhKeyCode.numpad5;
+    if (key == LogicalKeyboardKey.numpad6) return OhKeyCode.numpad6;
+    if (key == LogicalKeyboardKey.numpad7) return OhKeyCode.numpad7;
+    if (key == LogicalKeyboardKey.numpad8) return OhKeyCode.numpad8;
+    if (key == LogicalKeyboardKey.numpad9) return OhKeyCode.numpad9;
+    if (key == LogicalKeyboardKey.numpadAdd) return OhKeyCode.numpadAdd;
+    if (key == LogicalKeyboardKey.numpadSubtract) return OhKeyCode.numpadSubtract;
+    if (key == LogicalKeyboardKey.numpadMultiply) return OhKeyCode.numpadMultiply;
+    if (key == LogicalKeyboardKey.numpadDivide) return OhKeyCode.numpadDivide;
+    if (key == LogicalKeyboardKey.numpadDecimal) return OhKeyCode.numpadDot;
+    if (key == LogicalKeyboardKey.numpadComma) return OhKeyCode.numpadComma;
+    if (key == LogicalKeyboardKey.numpadEnter) return OhKeyCode.numpadEnter;
+    if (key == LogicalKeyboardKey.numpadEqual) return OhKeyCode.numpadEquals;
     // A-Z
     final keyId = key.keyId;
     if (keyId >= LogicalKeyboardKey.keyA.keyId &&

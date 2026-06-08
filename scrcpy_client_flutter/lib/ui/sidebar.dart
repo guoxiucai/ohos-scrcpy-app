@@ -787,7 +787,7 @@ class _TextInputPanelState extends State<_TextInputPanel> {
     final text = _ctrl.text;
     if (text.isEmpty) return;
     setState(() => _busy = true);
-    final result = await widget.state.inputText(text);
+    final result = widget.state.sendTextInput(text);
     if (!mounted) return;
     setState(() => _busy = false);
     if (result.ok) {
@@ -797,7 +797,7 @@ class _TextInputPanelState extends State<_TextInputPanel> {
 
   @override
   Widget build(BuildContext context) {
-    final canSend = widget.state.selectedDevice != null;
+    final canSend = widget.state.connState == ConnState.connected;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [

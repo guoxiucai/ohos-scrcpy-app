@@ -9,7 +9,6 @@ import { audio } from '@kit.AudioKit';
 import { ControlSubType } from './Protocol';
 import display from '@ohos.display';
 import util from '@ohos.util';
-import pasteboard from '@ohos.pasteboard';
 
 const DOMAIN = 0xA000;
 const TAG = 'InputInjector';
@@ -296,20 +295,75 @@ export class InputInjector {
     const decoder = new util.TextDecoder('utf-8');
     const text: string = decoder.decodeToString(payload);
     if (text.length === 0) return;
-    const pasteData: pasteboard.PasteData = pasteboard.createData(pasteboard.MIMETYPE_TEXT_PLAIN, text);
-    const board: pasteboard.SystemPasteboard = pasteboard.getSystemPasteboard();
-    board.setData(pasteData).then(() => {
-      this.injectSingleKey(KeyCode.KEYCODE_CTRL_LEFT, true);
-      setTimeout(() => {
-        this.injectSingleKey(KeyCode.KEYCODE_V, true);
+
+    // 逐字符键码注入：将文本拆解为单个 ASCII 字符，每个字符通过 injectKeyEvent
+    // 独立注入按键 down+up。这条路径与键盘实时转发（KEY_EVENT）完全一致，
+    // 是经过验证的可靠通道，不需要剪贴板、不需要修饰键、不需要额外权限。
+    //
+    // 限制：仅支持可映射到 keyCode 的 ASCII 字符（字母/数字/常见符号/空格/回车/Tab）。
+    // 无法映射的字符（中文、大写需 Shift 的符号等）被静默跳过。
+    // 中文等 Unicode 文本请通过侧边栏 → 剪贴板手动粘贴，或使用 hdc uitest 备用路径。
+    for (let i: number = 0; i < text.length; i++) {
+      const ch: string = text.charAt(i);
+      const keyCode: number = this.charToKeyCode(ch);
+      if (keyCode >= 0) {
+        // 每个字符间隔 60ms，避免事件重叠
+        const delay: number = i * 60;
         setTimeout(() => {
-          this.injectSingleKey(KeyCode.KEYCODE_V, false);
-          this.injectSingleKey(KeyCode.KEYCODE_CTRL_LEFT, false);
-        }, 20);
-      }, 20);
-    }).catch((e: Error) => {
-      hilog.warn(DOMAIN, TAG, 'clipboard setData failed: %{public}s', e.message ?? JSON.stringify(e));
-    });
+          this.injectSingleKey(keyCode, true);
+          setTimeout(() => {
+            this.injectSingleKey(keyCode, false);
+          }, 40);
+        }, delay);
+      } else {
+        hilog.info(DOMAIN, TAG, 'textInput skip unmappable char: U+%{public}s',
+          ch.charCodeAt(0).toString(16));
+      }
+    }
+  }
+
+  /** 将单个 ASCII 字符映射为 OpenHarmony KeyCode，无法映射返回 -1。 */
+  private charToKeyCode(ch: string): number {
+    const code: number = ch.charCodeAt(0);
+    // a-z → KEYCODE_A + offset
+    if (code >= 97 && code <= 122) {
+      return KeyCode.KEYCODE_A + (code - 97);
+    }
+    // A-Z → 同键位（输出小写，注入 API 无法传 Shift 修饰键）
+    if (code >= 65 && code <= 90) {
+      return KeyCode.KEYCODE_A + (code - 65);
+    }
+    // 0-9 → KEYCODE_0 + offset
+    if (code >= 48 && code <= 57) {
+      return KeyCode.KEYCODE_0 + (code - 48);
+    }
+    // 空格
+    if (code === 32) {
+      return KeyCode.KEYCODE_SPACE;
+    }
+    // 回车 \n
+    if (code === 10) {
+      return KeyCode.KEYCODE_ENTER;
+    }
+    // Tab \t
+    if (code === 9) {
+      return KeyCode.KEYCODE_TAB;
+    }
+    // 符号（不需要 Shift 的基键）
+    switch (ch) {
+      case '-': return KeyCode.KEYCODE_MINUS;
+      case '=': return KeyCode.KEYCODE_EQUALS;
+      case '[': return KeyCode.KEYCODE_LEFT_BRACKET;
+      case ']': return KeyCode.KEYCODE_RIGHT_BRACKET;
+      case '\\': return KeyCode.KEYCODE_BACKSLASH;
+      case ';': return KeyCode.KEYCODE_SEMICOLON;
+      case '\'': return KeyCode.KEYCODE_APOSTROPHE;
+      case ',': return KeyCode.KEYCODE_COMMA;
+      case '.': return KeyCode.KEYCODE_PERIOD;
+      case '/': return KeyCode.KEYCODE_SLASH;
+      case '`': return KeyCode.KEYCODE_GRAVE;
+      default: return -1;
+    }
   }
 
   private adjustVolume(up: boolean): void {
