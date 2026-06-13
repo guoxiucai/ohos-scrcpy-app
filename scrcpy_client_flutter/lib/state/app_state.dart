@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../decoder/video_decoder.dart';
 import '../hdc/device.dart';
@@ -52,6 +53,37 @@ class AppState extends ChangeNotifier {
   int targetMaxShort = 1080;
   int targetBitrate = 4 * 1000 * 1000;
   int targetFps = 15;
+
+  // 用户偏好持久化
+  static const _prefKeyMaxShort = 'video_max_short';
+  static const _prefKeyFps = 'video_fps';
+  SharedPreferences? _prefs;
+  bool _prefsLoaded = false;
+
+  /// 初始化 SharedPreferences（应在 app 启动时调用一次）
+  Future<void> initPrefs() async {
+    try {
+      _prefs = await SharedPreferences.getInstance();
+      _prefsLoaded = true;
+      final savedMaxShort = _prefs!.getInt(_prefKeyMaxShort);
+      final savedFps = _prefs!.getInt(_prefKeyFps);
+      if (savedMaxShort != null) targetMaxShort = savedMaxShort;
+      if (savedFps != null) targetFps = savedFps;
+      // 码率根据保存的分辨率联动
+      targetBitrate = targetMaxShort <= 1080 ? 4 * 1000 * 1000 : 6 * 1000 * 1000;
+      debugPrint('[prefs] loaded maxShort=$targetMaxShort, fps=$targetFps, bitrate=$targetBitrate');
+    } catch (e) {
+      debugPrint('[prefs] init failed: $e');
+    }
+  }
+
+  /// 保存用户手动选择的视频参数
+  void _saveVideoPrefs() {
+    if (!_prefsLoaded || _prefs == null) return;
+    _prefs!.setInt(_prefKeyMaxShort, targetMaxShort);
+    _prefs!.setInt(_prefKeyFps, targetFps);
+    debugPrint('[prefs] saved maxShort=$targetMaxShort, fps=$targetFps');
+  }
 
   Timer? _heartbeatTimer;
   Timer? _heartbeatCheckTimer;
@@ -155,9 +187,20 @@ class AppState extends ChangeNotifier {
       _startStatsTicker();
       // 根据连接类型设置默认视频参数并下发
       final isWifi = dev.connection == 'TCP';
-      targetMaxShort = isWifi ? 1080 : 2160;
-      targetBitrate = isWifi ? 4 * 1000 * 1000 : 12 * 1000 * 1000;
+      // WiFi: 2160p / 6Mbps / 15fps；USB: 2160p / 12Mbps / 15fps
+      targetMaxShort = 2160;
+      targetBitrate = isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000;
       targetFps = 15;
+      // 若用户有手动保存的偏好，优先使用保存值
+      if (_prefsLoaded && _prefs != null) {
+        final savedMaxShort = _prefs!.getInt(_prefKeyMaxShort);
+        final savedFps = _prefs!.getInt(_prefKeyFps);
+        if (savedMaxShort != null) {
+          targetMaxShort = savedMaxShort;
+          targetBitrate = savedMaxShort <= 1080 ? 4 * 1000 * 1000 : (isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000);
+        }
+        if (savedFps != null) targetFps = savedFps;
+      }
       _sendVideoParams();
       // 连接成功后自动拉一次可卸载应用列表
       requestAppList();
@@ -245,10 +288,12 @@ class AppState extends ChangeNotifier {
   void changeVideoParams({int? maxShort, int? bitrate, int? fps}) {
     if (maxShort != null) {
       targetMaxShort = maxShort;
-      // 码率跟随分辨率档位联动
-      targetBitrate = maxShort <= 1080 ? 4 * 1000 * 1000 : 12 * 1000 * 1000;
+      // 码率跟随分辨率档位联动：≤1080p → 4Mbps，2160p → 6Mbps
+      targetBitrate = maxShort <= 1080 ? 4 * 1000 * 1000 : 6 * 1000 * 1000;
     }
     if (fps != null) targetFps = fps;
+    // 保存用户手动选择的视频参数
+    _saveVideoPrefs();
     notifyListeners();
     _sendVideoParams();
   }

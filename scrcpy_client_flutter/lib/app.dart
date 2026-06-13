@@ -23,6 +23,7 @@ class _AppState extends State<App> {
   void initState() {
     super.initState();
     state.addListener(_onChange);
+    state.initPrefs();
     WidgetsBinding.instance.addPostFrameCallback((_) => state.refreshDevices());
   }
 
