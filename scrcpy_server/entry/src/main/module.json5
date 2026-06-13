@@ -38,7 +38,7 @@
         "description": "$string:HapInstaller_desc",
         "icon": "$media:layered_image",
         "label": "$string:HapInstaller_label",
-        "startWindowIcon": "$media:startIcon",
+        "startWindowIcon": "$media:ic_hap_install",
         "startWindowBackground": "$color:start_window_background",
         "exported": true,
         "skills": [
