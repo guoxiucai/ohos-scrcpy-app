@@ -39,7 +39,7 @@ ohos-scrcpy-app/
 - **传输通道**：仅 `hdc fport tcp:<pcPort> tcp:53535`，USB/网络 hdc 共用同一通道，**不**做设备 LAN 直连。
 - **服务端保活与自启**：完全交给 `app.json5` 中已配置的 `keepAlive`，**不**写 BootReceiver/StaticSubscriber，**不**申请 `MANAGE_APP_KEEP_ALIVE` / `RECEIVER_STARTUP_COMPLETED`。
 - **mainElement**：`module.json5` 的 `mainElement` 必须指向 `ScrcpyService`（ServiceExtensionAbility），UIAbility 仅作调试 UI 入口，不放业务逻辑。
-- **API 区间**：`compatibleSdkVersion: 15`，`compileSdkVersion: 20`。
+- **API 区间**：`compatibleSdkVersion: 15`，`compileSdkVersion: 23`。
 
 ## 通信协议
 
