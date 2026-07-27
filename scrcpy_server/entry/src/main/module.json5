@@ -37,11 +37,6 @@
       { "name": "ohos.permission.INTERNET" },
       { "name": "ohos.permission.GET_WIFI_INFO" },
       {
-        "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",
-        "reason": "$string:system_float_window",
-        "usedScene": { "abilities": ["EntryAbility","ScrcpyService"], "when": "always" }
-      },
-      {
         "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
         "reason": "$string:custom_capture",
         "usedScene": { "abilities": ["EntryAbility","ScrcpyService"], "when": "always" }

@@ -163,7 +163,6 @@ AllowAppDesktopIconHide
 |------|------|----------------------------|
 | `ohos.permission.INTERNET` | 建立 TCP 服务与通信 | normal / system_grant |
 | `ohos.permission.GET_WIFI_INFO` | 获取设备网络信息 | normal / system_grant |
-| `ohos.permission.SYSTEM_FLOAT_WINDOW` | 使用系统悬浮窗能力 | system_basic / system_grant |
 | `ohos.permission.CUSTOM_SCREEN_CAPTURE` | 获取屏幕图像 | normal / user_grant |
 | `ohos.permission.CAPTURE_SCREEN` | 执行系统屏幕采集 | system_core / system_grant |
 | `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` | 免除每次录屏的用户授权 | system_core / system_grant |
