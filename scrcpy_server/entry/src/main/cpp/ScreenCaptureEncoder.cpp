@@ -54,6 +54,8 @@ public:
     void Stop();
     bool RestartEncoder() {
         CaptureConfig cfg;
+        OH_AVScreenCapture *capture = nullptr;
+        OH_AVCodec *oldEncoder = nullptr;
         {
             std::lock_guard<std::mutex> g(mu_);
             if (encoder_ == nullptr || capture_ == nullptr || window_ == nullptr ||
@@ -62,38 +64,60 @@ public:
                 return false;
             }
             cfg = cfg_;
+            capture = capture_;
+            oldEncoder = encoder_;
+            encoder_ = nullptr;
+            window_ = nullptr;
+            stopping_.store(true);
+            configEmitted_ = false;
+            sps_.clear();
+            pps_.clear();
+            {
+                std::lock_guard<std::mutex> ptsGuard(pts_mu_);
+                lastSourcePts_ = -1;
+                normalizedPtsUs_ = 0;
+                sourcePtsDivisor_ = 0;
+            }
         }
 
-        OH_LOG_INFO(LOG_APP, "RestartEncoder: rebuilding H264 capture session");
-        Stop();
+        // ScreenCapture 本身保持不变，只暂停向旧 surface 送帧。
+        auto stopCaptureRet = OH_AVScreenCapture_StopScreenCapture(capture);
+        OH_LOG_INFO(LOG_APP,
+                    "RestartEncoder: pause capture ret=%{public}d",
+                    stopCaptureRet);
+        OH_VideoEncoder_Flush(oldEncoder);
+        OH_VideoEncoder_Stop(oldEncoder);
+        {
+            std::lock_guard<std::mutex> callbackGuard(callback_mu_);
+        }
+        OH_VideoEncoder_Destroy(oldEncoder);
+
         encoder_paused_.store(false, std::memory_order_relaxed);
-        bool ok = Start(cfg);
-        OH_LOG_INFO(LOG_APP, "RestartEncoder result=%{public}d", ok ? 1 : 0);
-        return ok;
-    }
-    bool RefreshCaptureFrame() {
-        std::lock_guard<std::mutex> g(mu_);
-        if (encoder_ == nullptr || capture_ == nullptr || window_ == nullptr ||
-            mode_ != kCodecH264 || stopping_.load() ||
-            encoder_paused_.load(std::memory_order_relaxed)) {
-            return false;
+        bool restarted = false;
+        {
+            std::lock_guard<std::mutex> g(mu_);
+            cfg_ = cfg;
+            stopping_.store(false);
+            if (StartH264EncoderLocked()) {
+                auto startCaptureRet =
+                    OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
+                restarted = startCaptureRet == AV_SCREEN_CAPTURE_ERR_OK;
+                if (!restarted) {
+                    OH_LOG_WARN(LOG_APP,
+                                "RestartEncoder: bind new surface failed: %{public}d",
+                                startCaptureRet);
+                }
+            }
+        }
+        if (restarted) {
+            OH_LOG_INFO(LOG_APP, "RestartEncoder: encoder rebuilt, capture reused");
+            return true;
         }
 
-        auto stopRet = OH_AVScreenCapture_StopScreenCapture(capture_);
-        if (stopRet != AV_SCREEN_CAPTURE_ERR_OK) {
-            OH_LOG_WARN(LOG_APP,
-                        "RefreshCaptureFrame: stop screen capture failed: %{public}d",
-                        stopRet);
-            return false;
-        }
-        auto startRet = OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
-        if (startRet != AV_SCREEN_CAPTURE_ERR_OK) {
-            OH_LOG_WARN(LOG_APP,
-                        "RefreshCaptureFrame: restart screen capture failed: %{public}d",
-                        startRet);
-            return false;
-        }
-        return true;
+        // 新编码器创建失败时执行完整恢复，避免服务端留在半初始化状态。
+        OH_LOG_WARN(LOG_APP, "RestartEncoder: partial restart failed, recovering session");
+        Stop();
+        return Start(cfg);
     }
     void SetPaused(bool paused) {
         bool prev = encoder_paused_.exchange(paused, std::memory_order_relaxed);
@@ -114,6 +138,8 @@ private:
     ~CaptureSession() { Stop(); }
 
     bool TryStartH264();
+    bool StartH264EncoderLocked();
+    bool StartH264ScreenCaptureLocked();
     bool StartRaw();
     void TeardownH264Locked();
 
@@ -274,8 +300,10 @@ bool CaptureSession::TryStartH264() {
     if (!ProbeScreenCapture(cfg_)) {
         return false;
     }
+    return StartH264EncoderLocked() && StartH264ScreenCaptureLocked();
+}
 
-    // ---- 1. 先创建并完整配置 VideoEncoder（必须先拿到 surface 才能给截屏用）----
+bool CaptureSession::StartH264EncoderLocked() {
     OH_AVCapability *cap = OH_AVCodec_GetCapability(OH_AVCODEC_MIMETYPE_VIDEO_AVC, true);
     if (cap == nullptr) {
         OH_LOG_INFO(LOG_APP, "no AVC encoder capability on this device");
@@ -318,6 +346,14 @@ bool CaptureSession::TryStartH264() {
     OH_AVFormat_SetIntValue(fmt, OH_MD_KEY_I_FRAME_INTERVAL, 2000);
     OH_AVFormat_SetIntValue(fmt, OH_MD_KEY_PROFILE, AVC_PROFILE_MAIN);
     OH_AVFormat_SetIntValue(fmt, OH_MD_KEY_VIDEO_ENCODE_BITRATE_MODE, VBR);
+    if (__builtin_available(ohos 18.0.0, *)) {
+        // Surface 无新画面时由编码器重复编码上一帧，生成 frame_num/POC 连续的
+        // 合法 P 帧。避免客户端复制压缩数据，也不再周期性停启 ScreenCapture。
+        OH_AVFormat_SetIntValue(
+            fmt, OH_MD_KEY_VIDEO_ENCODER_REPEAT_PREVIOUS_FRAME_AFTER, 100);
+        OH_AVFormat_SetIntValue(
+            fmt, OH_MD_KEY_VIDEO_ENCODER_REPEAT_PREVIOUS_MAX_COUNT, -1);
+    }
     auto ret = OH_VideoEncoder_Configure(encoder_, fmt);
     OH_AVFormat_Destroy(fmt);
     if (ret != AV_ERR_OK) {
@@ -336,8 +372,10 @@ bool CaptureSession::TryStartH264() {
         OH_LOG_WARN(LOG_APP, "encoder start failed");
         return false;
     }
+    return true;
+}
 
-    // ---- 2. 创建并配置 OH_AVScreenCapture（参考 demo：先注册回调，再 Init，再 Start）----
+bool CaptureSession::StartH264ScreenCaptureLocked() {
     capture_ = OH_AVScreenCapture_Create();
     if (capture_ == nullptr) {
         OH_LOG_WARN(LOG_APP, "OH_AVScreenCapture_Create failed");
@@ -838,10 +876,6 @@ void SetEncoderPaused(bool paused) {
 
 bool RestartEncoder() {
     return CaptureSession::Instance().RestartEncoder();
-}
-
-bool RefreshCaptureFrame() {
-    return CaptureSession::Instance().RefreshCaptureFrame();
 }
 
 bool ProbeScreenCapture(const CaptureConfig &cfg) {

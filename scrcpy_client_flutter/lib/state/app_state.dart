@@ -52,8 +52,6 @@ class AppState extends ChangeNotifier {
   DateTime? _recordingStartedAt;
   Timer? _recordingTimer;
   Timer? _keyframeTimer;
-  Timer? _recordingFrameRefreshTimer;
-  int _framesAtLastRecordingRefresh = 0;
   bool _awaitingRecordingEncoderConfig = false;
   bool _decoderBackpressure = false;
   bool _recorderBackpressure = false;
@@ -297,13 +295,7 @@ class AppState extends ChangeNotifier {
           await _restartWaitingRecorderForConfig(cfg);
           break;
         }
-        if (old != null &&
-            old.codec == cfg.codec &&
-            old.width == cfg.width &&
-            old.height == cfg.height &&
-            old.fps == cfg.fps &&
-            listEquals(old.sps, cfg.sps) &&
-            listEquals(old.pps, cfg.pps)) {
+        if (_isSameVideoConfig(old, cfg)) {
           break;
         }
         if (recordingState == RecordingState.waitingForKeyframe) {
@@ -430,8 +422,8 @@ class AppState extends ChangeNotifier {
     });
     notifyListeners();
 
-    // 2. 完整重建服务端编码会话。收到新 SPS/PPS 后，包处理队列会先重建
-    // 本地解码器和 recorder，再继续处理紧随其后的新 IDR。
+    // 2. 保留 ScreenCapture，仅重建服务端 VideoEncoder 并绑定新 surface。
+    // 收到新 SPS/PPS 后先初始化 recorder，再继续处理紧随其后的新 IDR。
     _awaitingRecordingEncoderConfig = true;
     sendControl(ControlSubType.restartEncoder, Uint8List(0));
 
@@ -453,7 +445,7 @@ class AppState extends ChangeNotifier {
       return const AppActionResult.fail('正在保存录制文件');
     }
 
-    await _refreshRecordingFrameAndWait();
+    await _waitForNextRecordingFrame();
     recordingState = RecordingState.finalizing;
     _cancelRecordingTimers();
     notifyListeners();
@@ -508,7 +500,6 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       });
-      _startRecordingFrameRefresh();
       notifyListeners();
     } else if (state == 'error' && recordingLocked) {
       _cancelRecordingTimers();
@@ -527,22 +518,23 @@ class AppState extends ChangeNotifier {
     _keyframeTimer = null;
     _recordingTimer?.cancel();
     _recordingTimer = null;
-    _recordingFrameRefreshTimer?.cancel();
-    _recordingFrameRefreshTimer = null;
     _awaitingRecordingEncoderConfig = false;
   }
 
   Future<void> _restartWaitingRecorderForConfig(VideoConfig cfg) async {
     _awaitingRecordingEncoderConfig = false;
+    final old = videoConfig;
     videoConfig = cfg;
-    await decoder.dispose();
-    await decoder.init(
-      codec: cfg.codec,
-      width: cfg.width,
-      height: cfg.height,
-      sps: cfg.sps,
-      pps: cfg.pps,
-    );
+    if (!_isSameVideoConfig(old, cfg)) {
+      await decoder.dispose();
+      await decoder.init(
+        codec: cfg.codec,
+        width: cfg.width,
+        height: cfg.height,
+        sps: cfg.sps,
+        pps: cfg.pps,
+      );
+    }
     if (recordingState != RecordingState.waitingForKeyframe) {
       return;
     }
@@ -578,32 +570,24 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _startRecordingFrameRefresh() {
-    _framesAtLastRecordingRefresh = frames;
-    _recordingFrameRefreshTimer?.cancel();
-    _recordingFrameRefreshTimer =
-        Timer.periodic(const Duration(milliseconds: 250), (_) {
-      if (recordingState != RecordingState.recording ||
-          _encoderPauseSent ||
-          connState != ConnState.connected) {
-        return;
-      }
-      if (frames == _framesAtLastRecordingRefresh) {
-        sendControl(ControlSubType.refreshCaptureFrame, Uint8List(0));
-      }
-      _framesAtLastRecordingRefresh = frames;
-    });
+  bool _isSameVideoConfig(VideoConfig? left, VideoConfig right) {
+    return left != null &&
+        left.codec == right.codec &&
+        left.width == right.width &&
+        left.height == right.height &&
+        left.fps == right.fps &&
+        listEquals(left.sps, right.sps) &&
+        listEquals(left.pps, right.pps);
   }
 
-  Future<void> _refreshRecordingFrameAndWait() async {
+  Future<void> _waitForNextRecordingFrame() async {
     if (recordingState != RecordingState.recording ||
         _encoderPauseSent ||
         connState != ConnState.connected) {
       return;
     }
     final before = frames;
-    sendControl(ControlSubType.refreshCaptureFrame, Uint8List(0));
-    for (int attempt = 0; attempt < 15; attempt++) {
+    for (int attempt = 0; attempt < 10; attempt++) {
       await Future<void>.delayed(const Duration(milliseconds: 20));
       if (frames > before ||
           recordingState != RecordingState.recording ||

@@ -7,8 +7,7 @@ import display from '@ohos.display';
 import deviceInfo from '@ohos.deviceInfo';
 import emitter from '@ohos.events.emitter';
 import { startServer, stopServer, startCapture, stopCapture, setEncoderPaused, restartEncoder,
-  refreshCaptureFrame, broadcastDeviceStatus,
-  CaptureConfig as NativeCaptureConfig } from 'libscrcpy_capture.so';
+  broadcastDeviceStatus, CaptureConfig as NativeCaptureConfig } from 'libscrcpy_capture.so';
 import { InputInjector } from './InputInjector';
 import { ControlSubType } from './Protocol';
 import { AppListProvider } from './AppListProvider';
@@ -105,10 +104,6 @@ export default class ScrcpyService extends ServiceExtensionAbility {
     if (sub === ControlSubType.RESTART_ENCODER) {
       const restarted: boolean = restartEncoder();
       hilog.info(DOMAIN, TAG, 'restart encoder result=%{public}d', restarted ? 1 : 0);
-      return;
-    }
-    if (sub === ControlSubType.REFRESH_CAPTURE_FRAME) {
-      refreshCaptureFrame();
       return;
     }
     if (sub === ControlSubType.CHANGE_VIDEO_PARAMS) {
