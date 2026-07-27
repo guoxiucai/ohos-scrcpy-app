@@ -139,9 +139,39 @@ KeepAlive
 AllowAppDesktopIconHide
 ```
 
+签名 Profile 的 `acls.allowed-acls` 还需包含以下 system_core 权限：
+
+```json
+{
+  "acls": {
+    "allowed-acls": [
+      "ohos.permission.CAPTURE_SCREEN",
+      "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE",
+      "ohos.permission.INJECT_INPUT_EVENT"
+    ]
+  }
+}
+```
+
 #### 写入系统白名单（需 root）
 
 设备上需写入两个系统配置文件，参考 `scrcpy_server/signature/` 目录下的模板。如果你自己替换了签名证书，需要将 `app_signature` 换成你自己证书的指纹：
+
+当前服务端在 `scrcpy_server/entry/src/main/module.json5` 中声明的权限如下：
+
+| 权限 | 用途 | API 23 权限级别 / 授权方式 |
+|------|------|----------------------------|
+| `ohos.permission.INTERNET` | 建立 TCP 服务与通信 | normal / system_grant |
+| `ohos.permission.GET_WIFI_INFO` | 获取设备网络信息 | normal / system_grant |
+| `ohos.permission.CUSTOM_SCREEN_CAPTURE` | 获取屏幕图像 | normal / user_grant |
+| `ohos.permission.CAPTURE_SCREEN` | 执行系统屏幕采集 | system_core / system_grant |
+| `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` | 免除每次录屏的用户授权 | system_core / system_grant |
+| `ohos.permission.KEEP_BACKGROUND_RUNNING` | 在后台持续采集与推流 | normal / system_grant |
+| `ohos.permission.START_ABILITIES_FROM_BACKGROUND` | 从后台启动必要的 Ability | system_basic / system_grant |
+| `ohos.permission.INJECT_INPUT_EVENT` | 注入触摸、鼠标和按键事件 | system_core / system_grant |
+| `ohos.permission.GET_INSTALLED_BUNDLE_LIST` | 获取可卸载应用列表 | system_basic / user_grant |
+| `ohos.permission.RUNNING_LOCK` | 获取运行锁以保持后台运行 | normal / system_grant |
+| `ohos.permission.ACCESS_NOTIFICATION_POLICY` | 调节系统音量策略 | normal / system_grant |
 
 **`/system/etc/app/install_list_capability.json`** — 追加：
 
@@ -162,17 +192,15 @@ AllowAppDesktopIconHide
   "bundleName": "com.ohos.scrcpy.server",
   "app_signature": ["8E93863FC32EE238060BF69A9B37E2608FFFB21F93C862DD511CBAC9F30024B5"],
   "permissions": [
-    { "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",          "userCancellable": false },
-    { "name": "ohos.permission.START_ABILITIES_FROM_BACKGROUND","userCancellable": false },
-    { "name": "ohos.permission.CAPTURE_SCREEN",                 "userCancellable": false },
-    { "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",            "userCancellable": false },
-    { "name": "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE","userCancellable": false },
-    { "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",      "userCancellable": false }
+    { "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",           "userCancellable": false },
+    { "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",       "userCancellable": false }
   ]
 }
 ```
 
-> 其中 `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 从 API 15 起提供，低版本可去除此项（但每次截屏需用户手动授权）。
+> `CAPTURE_SCREEN`、`EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 和 `INJECT_INPUT_EVENT` 为 system_core 权限，还必须包含在签名 Profile 的 `allowed-acls` 中。`CUSTOM_SCREEN_CAPTURE` 与 `GET_INSTALLED_BUNDLE_LIST` 为 user_grant 权限，通过系统白名单预授权，避免常驻服务等待交互式授权。
+>
+> `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 从 API 15 起提供；低于 API 15 的设备可移除此项，但每次截屏都需要用户手动授权。
 
 写入后重启设备使白名单生效。
 
@@ -181,7 +209,7 @@ AllowAppDesktopIconHide
 | 工具 | 版本 | 说明 |
 |------|------|------|
 | DevEco Studio | 6.0+ | OpenHarmony 应用 IDE |
-| OpenHarmony SDK | API 20 | `compileSdkVersion: 20`，`compatibleSdkVersion: 15` |
+| OpenHarmony SDK | API 23 | `compileSdkVersion: 23`，`compatibleSdkVersion: 15` |
 | Full SDK | 对应 API 版本 | **必须手动替换**，见下方说明 |
 
 #### Full SDK 替换
@@ -192,7 +220,7 @@ AllowAppDesktopIconHide
 
 通过 [OpenHarmony CI 数字化平台](https://dcp.openharmony.cn/workbench/cicd/dailybuild/dailylist) 查询并下载对应版本的 `ohos-sdk-full` 包。
 
-OpenHarmony 6.0 Full SDK 直接下载：
+以OpenHarmony 6.0 Full SDK 为例，直接下载：
 - macOS (ARM)：[ohos-sdk-full_6.0 Mac-M1](https://cidownload.openharmony.cn/version/Master_Version/OpenHarmony_6.0.0.49/20260227002444/20260227002444-L2-SDK-MAC-M1-FULL.tar.gz)
 - Windows / Linux：[ohos-sdk-full_6.0 Release](https://cidownload.openharmony.cn/version/Master_Version/OpenHarmony_6.0.0.49/20260225_043115/version-Master_Version-OpenHarmony_6.0.0.49-20260225_043115-ohos-sdk-full_6.0-Release.tar.gz)
 

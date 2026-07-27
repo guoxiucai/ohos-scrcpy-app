@@ -4,7 +4,7 @@
 构建一个针对 OpenHarmony 设备的 scrcpy 类工具，桌面客户端（Flutter）通过 HDC 端口转发与设备上常驻的系统服务通信，实时镜像屏幕并提供点击/滑动控制、hap 安装、亮度音量控制。
 
 现状：
-- `scrcpy_server/`：已存在 OpenHarmony 系统应用模板（bundle `com.ohos.scrcpy.server`，已申请 `CUSTOM_SCREEN_CAPTURE` / `SYSTEM_FLOAT_WINDOW` / `INTERNET`）。
+- `scrcpy_server/`：已存在 OpenHarmony 系统应用模板（bundle `com.ohos.scrcpy.server`，已申请 `CUSTOM_SCREEN_CAPTURE` / `INTERNET`）。
 - `scrcpy_client_flutter/`：空目录，需要从零创建 Flutter 3.22.1 工程（macOS / Windows 优先，Linux 留 P3）。
 - API 区间：OpenHarmony API 15 ~ 20。
 

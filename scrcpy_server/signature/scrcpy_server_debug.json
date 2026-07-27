@@ -18,8 +18,7 @@
         "allowed-acls": [
             "ohos.permission.CAPTURE_SCREEN",
             "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE",
-            "ohos.permission.INJECT_INPUT_EVENT",
-            "ohos.permission.INSTALL_BUNDLE"
+            "ohos.permission.INJECT_INPUT_EVENT"
         ]
     },
     "permissions": {

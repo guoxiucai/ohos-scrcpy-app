@@ -31,43 +31,11 @@
             ]
           }
         ]
-      },
-      {
-        "name": "HapInstallerAbility",
-        "srcEntry": "./ets/hapinstaller/HapInstallerAbility.ets",
-        "description": "$string:HapInstaller_desc",
-        "icon": "$media:layered_image",
-        "label": "$string:HapInstaller_label",
-        "startWindowIcon": "$media:ic_hap_install",
-        "startWindowBackground": "$color:start_window_background",
-        "exported": true,
-        "skills": [
-          {
-            "actions": [
-              "ohos.want.action.viewData"
-            ],
-//            "uris": [
-//              {
-//                "scheme": "file",
-//                "utd": "openharmony.hap"
-//              },
-//              {
-//                "scheme": "file",
-//                "type": "application/vnd.openharmony.package-archive"
-//              }
-//            ]
-          }
-        ]
       }
     ],
     "requestPermissions": [
       { "name": "ohos.permission.INTERNET" },
       { "name": "ohos.permission.GET_WIFI_INFO" },
-      {
-        "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",
-        "reason": "$string:system_float_window",
-        "usedScene": { "abilities": ["EntryAbility","ScrcpyService"], "when": "always" }
-      },
       {
         "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
         "reason": "$string:custom_capture",
@@ -115,23 +83,7 @@
         "name": "ohos.permission.ACCESS_NOTIFICATION_POLICY",
         "reason": "$string:volume_control",
         "usedScene": { "abilities": ["ScrcpyService"], "when": "always" }
-      },
-      {
-        "name": "ohos.permission.INSTALL_BUNDLE",
-        "reason": "$string:install_bundle_reason",
-        "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
-      },
-      {
-        "name": "ohos.permission.FILE_ACCESS_MANAGER",
-        "reason": "$string:install_bundle_reason",
-        "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
-      },
-      {
-        "name": "ohos.permission.STORAGE_MANAGER",
-        "reason": "$string:install_bundle_reason",
-        "usedScene": { "abilities": ["HapInstallerAbility"], "when": "always" }
       }
-
     ],
     "extensionAbilities": [
       {
