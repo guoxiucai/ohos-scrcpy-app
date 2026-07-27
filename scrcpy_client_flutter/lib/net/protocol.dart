@@ -28,6 +28,7 @@ class ControlSubType {
   static const int pauseEncoder = 0x40;
   static const int resumeEncoder = 0x41;
   static const int changeVideoParams = 0x42;
+  // 服务端刷新 H.264 采集输入，并请求恢复后的首个输入帧编码为 IDR。
   static const int requestKeyframe = 0x43;
 }
 

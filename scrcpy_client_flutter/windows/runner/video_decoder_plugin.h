@@ -36,8 +36,6 @@ class VideoDecoderPlugin : public flutter::Plugin {
 
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
   std::unique_ptr<H264Mp4Recorder> recorder_;
-  std::vector<uint8_t> latest_h264_keyframe_;
-  int codec_ = -1;
   bool media_foundation_started_ = false;
 
   std::unique_ptr<flutter::TextureVariant> cpu_texture_variant_;

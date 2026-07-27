@@ -54,10 +54,32 @@ public:
     void Stop();
     bool RequestKeyFrame() {
         std::lock_guard<std::mutex> g(mu_);
-        if (encoder_ == nullptr || mode_ != kCodecH264 || stopping_.load()) {
+        if (encoder_ == nullptr || capture_ == nullptr || window_ == nullptr ||
+            mode_ != kCodecH264 || stopping_.load()) {
             OH_LOG_WARN(LOG_APP, "RequestKeyFrame ignored: encoder unavailable");
             return false;
         }
+
+        // 静止画面下，编码器可能长时间收不到新的 surface 输入。
+        // SetParameter 返回成功只代表请求已被接受，不能保证立即输出 IDR。
+        // 在未因背压暂停时刷新采集输入，让恢复后的首个 surface 帧承载 I 帧请求。
+        if (!encoder_paused_.load(std::memory_order_relaxed)) {
+            auto stopRet = OH_AVScreenCapture_StopScreenCapture(capture_);
+            if (stopRet == AV_SCREEN_CAPTURE_ERR_OK) {
+                auto startRet = OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
+                if (startRet != AV_SCREEN_CAPTURE_ERR_OK) {
+                    OH_LOG_WARN(LOG_APP,
+                                "RequestKeyFrame: restart screen capture failed: %{public}d",
+                                startRet);
+                    return false;
+                }
+            } else {
+                OH_LOG_WARN(LOG_APP,
+                            "RequestKeyFrame: stop screen capture failed: %{public}d",
+                            stopRet);
+            }
+        }
+
         OH_AVFormat *format = OH_AVFormat_Create();
         if (format == nullptr) {
             OH_LOG_WARN(LOG_APP, "RequestKeyFrame: create format failed");
@@ -70,7 +92,7 @@ public:
             OH_LOG_WARN(LOG_APP, "RequestKeyFrame failed: %{public}d", ret);
             return false;
         }
-        OH_LOG_INFO(LOG_APP, "RequestKeyFrame requested");
+        OH_LOG_INFO(LOG_APP, "RequestKeyFrame requested after capture refresh");
         return true;
     }
     void SetPaused(bool paused) {

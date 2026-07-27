@@ -52,8 +52,6 @@ VideoDecoderPlugin::~VideoDecoderPlugin() {
 }
 
 void VideoDecoderPlugin::CleanupDecoder() {
-  latest_h264_keyframe_.clear();
-  codec_ = -1;
   if (decoder_) {
     decoder_->Teardown();
     decoder_.reset();
@@ -87,7 +85,6 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
 
     CleanupDecoder();
-    codec_ = codec;
 
     if (codec == 0) {
       if (!media_foundation_started_) {
@@ -225,9 +222,6 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
 
     if (!nal.empty()) {
-      if (codec_ == 0 && keyframe) {
-        latest_h264_keyframe_ = nal;
-      }
       recorder_->Feed(nal, keyframe, pts_us);
       decoder_->Feed(std::move(nal), keyframe, pts_us);
     }
@@ -243,11 +237,6 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
     MediaOperationResult response =
         recorder_->Start(std::get<EncodableMap>(*call.arguments()));
-    // 请求 I 帧不一定在所有编码器上生效；若缓存中有最近的关键帧则立即注入，
-    // 确保录制不会因等不到 IDR 而超时。新帧到达后会被自然写入覆盖。
-    if (response.ok && !latest_h264_keyframe_.empty()) {
-      recorder_->Feed(latest_h264_keyframe_, true, 0);
-    }
     result->Success(EncodeMediaResult(response));
 
   } else if (method == "stopRecording") {

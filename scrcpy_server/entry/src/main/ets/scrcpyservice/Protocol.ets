@@ -28,6 +28,7 @@ export class ControlSubType {
   static readonly PAUSE_ENCODER: number = 0x40;
   static readonly RESUME_ENCODER: number = 0x41;
   static readonly CHANGE_VIDEO_PARAMS: number = 0x42;
+  // 刷新 H.264 采集输入，并请求恢复后的首个输入帧编码为 IDR。
   static readonly REQUEST_KEYFRAME: number = 0x43;
 }
 

@@ -26,7 +26,6 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
   private var textureId: Int64 = -1
   private var session: VTDecompressionSession?
   private var formatDesc: CMVideoFormatDescription?
-  private var latestH264Keyframe: Data?
   private let lock = NSLock()
   private var latestPixelBuffer: CVPixelBuffer?
   private var codec: Int = 0
@@ -57,7 +56,6 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       let codec = (args["codec"] as? Int) ?? 0
       self.codec = codec
       teardown()
-      latestH264Keyframe = nil
       do {
         if codec == 0 {
           let sps = (args["sps"] as? FlutterStandardTypedData)?.data ?? Data()
@@ -94,9 +92,6 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       let keyframe = (args["keyframe"] as? Bool) ?? false
       let ptsUs = (args["pts"] as? Int64) ?? Int64((args["pts"] as? Int) ?? 0)
       let annexB = Data(nal)
-      if codec == 0 && keyframe {
-        latestH264Keyframe = annexB
-      }
       recorder.feed(annexB: annexB, keyframe: keyframe, ptsUs: ptsUs)
       if codec == 0 {
         decode(annexB: [UInt8](nal))
@@ -117,11 +112,6 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       let pps = (args["pps"] as? FlutterStandardTypedData)?.data ?? Data()
       do {
         try recorder.start(width: width, height: height, fps: fps, sps: sps, pps: pps)
-        // 静止画面可能不会产生新输入帧。用同一视频配置下缓存的 IDR
-        // 立即启动录制，后续仍会接收服务端主动请求到的关键帧。
-        if let keyframe = latestH264Keyframe {
-          recorder.feed(annexB: keyframe, keyframe: true, ptsUs: 0)
-        }
         result(mediaResult(ok: true))
       } catch {
         result(mediaResult(ok: false, error: error.localizedDescription))
@@ -147,7 +137,6 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
     case "dispose":
       recorder.cancel()
       teardown()
-      latestH264Keyframe = nil
       if textureId >= 0 {
         registrar.textures.unregisterTexture(textureId)
         textureId = -1
