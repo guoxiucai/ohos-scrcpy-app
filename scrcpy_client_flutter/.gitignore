@@ -34,6 +34,12 @@ migrate_working_dir/
 # Symbolication related
 app.*.symbols
 
+# Flutter auto-generated plugin registrants (flutter pub get 自动生成)
+**/Flutter/GeneratedPluginRegistrant.swift
+**/flutter/generated_plugin_registrant.cc
+**/flutter/generated_plugin_registrant.h
+**/flutter/generated_plugins.cmake
+
 # Obfuscation related
 app.*.map.json
 
