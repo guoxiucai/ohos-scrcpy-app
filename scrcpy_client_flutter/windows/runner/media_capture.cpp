@@ -197,11 +197,13 @@ struct H264Mp4Recorder::Impl {
   bool active = false;
   bool writing = false;
   int fps = 15;
-  int64_t nominal_frame_us = 66667;
-  int64_t first_pts_us = 0;
-  int64_t last_source_pts_us = -1;
   int frame_count = 0;
   std::unique_ptr<PendingFrame> pending;
+  // 本地时钟计时 — 录制时长不再依赖服务端 PTS。
+  // 即使屏幕静止无新帧，视频 duration 也能反映真实录制时间。
+  std::chrono::steady_clock::time_point recording_start;
+  std::chrono::steady_clock::time_point last_frame_time;
+  int64_t elapsed_us = 0;
 
   bool WriteFrame(const PendingFrame& frame,
                   int64_t duration_us,
@@ -228,7 +230,8 @@ struct H264Mp4Recorder::Impl {
     hr = MFCreateSample(&sample);
     if (SUCCEEDED(hr)) hr = sample->AddBuffer(buffer.Get());
     if (SUCCEEDED(hr)) {
-      hr = sample->SetSampleTime((frame.pts_us - first_pts_us) * 10);
+      // pts_us 现已存储为从 recording_start 起的本地时钟偏移(µs)
+      hr = sample->SetSampleTime(frame.pts_us * 10);
     }
     if (SUCCEEDED(hr)) {
       hr = sample->SetSampleDuration(std::max<int64_t>(1, duration_us) * 10);
@@ -258,9 +261,8 @@ struct H264Mp4Recorder::Impl {
     final_path.clear();
     active = false;
     writing = false;
-    first_pts_us = 0;
-    last_source_pts_us = -1;
     frame_count = 0;
+    elapsed_us = 0;
     pending.reset();
   }
 
@@ -346,8 +348,6 @@ MediaOperationResult H264Mp4Recorder::Start(const EncodableMap& args) {
     return result;
   }
 
-  impl_->nominal_frame_us = std::max<int64_t>(
-      1, 1000000LL / static_cast<int64_t>(impl_->fps));
   impl_->active = true;
   impl_->writing = false;
   result.ok = true;
@@ -360,32 +360,39 @@ void H264Mp4Recorder::Feed(const std::vector<uint8_t>& annex_b,
   if (!impl_->active || annex_b.empty()) return;
   auto converted = StripParameterSets(annex_b);
   if (converted.annex_b.empty()) return;
+
+  const auto now = std::chrono::steady_clock::now();
+
   if (!impl_->writing) {
     if (!keyframe || !converted.contains_idr) return;
     impl_->writing = true;
-    impl_->first_pts_us = pts_us;
-    impl_->last_source_pts_us = pts_us;
+    impl_->recording_start = now;
+    impl_->last_frame_time = now;
+    impl_->elapsed_us = 0;
     impl_->state_callback("recording", "");
-  } else if (pts_us < impl_->last_source_pts_us) {
-    impl_->Fail("视频时间戳发生回退，录制已终止");
-    return;
+  } else {
+    // 用本地时钟差作为上一帧的 duration，确保视频时长与真实时间一致
+    const auto elapsed_since_last =
+        std::chrono::duration_cast<std::chrono::microseconds>(
+            now - impl_->last_frame_time);
+    if (impl_->pending) {
+      std::string error;
+      if (!impl_->WriteFrame(
+              *impl_->pending,
+              std::max<int64_t>(1, elapsed_since_last.count()),
+              &error)) {
+        impl_->Fail(error);
+        return;
+      }
+      impl_->elapsed_us += elapsed_since_last.count();
+    }
+    impl_->last_frame_time = now;
   }
 
-  if (impl_->pending) {
-    std::string error;
-    if (!impl_->WriteFrame(
-            *impl_->pending,
-            std::max<int64_t>(1, pts_us - impl_->pending->pts_us),
-            &error)) {
-      impl_->Fail(error);
-      return;
-    }
-  }
   impl_->pending = std::make_unique<PendingFrame>();
   impl_->pending->data = std::move(converted.annex_b);
-  impl_->pending->pts_us = pts_us;
+  impl_->pending->pts_us = impl_->elapsed_us;
   impl_->pending->keyframe = keyframe && converted.contains_idr;
-  impl_->last_source_pts_us = pts_us;
 }
 
 MediaOperationResult H264Mp4Recorder::Stop() {
@@ -399,17 +406,23 @@ MediaOperationResult H264Mp4Recorder::Stop() {
     result.error = "尚未收到有效关键帧";
     return result;
   }
+  // 最后一帧的持续时间 = 从最后一帧到当前的本地时间差
+  const auto now = std::chrono::steady_clock::now();
+  const auto final_duration =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          now - impl_->last_frame_time);
+
   std::string error;
   if (!impl_->WriteFrame(
-          *impl_->pending, impl_->nominal_frame_us, &error)) {
+          *impl_->pending,
+          std::max<int64_t>(1, final_duration.count()), &error)) {
     impl_->Reset(true);
     result.error = error;
     return result;
   }
   impl_->pending.reset();
-  const int64_t duration = std::max<int64_t>(
-      0, impl_->last_source_pts_us - impl_->first_pts_us +
-             impl_->nominal_frame_us);
+  impl_->elapsed_us += final_duration.count();
+  const int64_t duration = impl_->elapsed_us;
   const int frame_count = impl_->frame_count;
   const std::wstring temporary = impl_->temporary_path;
   const std::wstring destination = impl_->final_path;
@@ -511,7 +524,12 @@ MediaOperationResult SavePixelFrameAsPng(
   }
   if (SUCCEEDED(hr)) hr = frame->Commit();
   if (SUCCEEDED(hr)) hr = encoder->Commit();
+  // 必须在 MoveFileExW 之前释放所有 COM 对象，否则 encoder/frame
+  // 内部可能仍持有 WIC stream 的文件句柄，导致 ERROR_SHARING_VIOLATION。
   stream.Reset();
+  frame.Reset();
+  encoder.Reset();
+  factory.Reset();
   if (FAILED(hr)) {
     DeleteFileW(temporary.c_str());
     result.error = HResultText("PNG 编码失败", hr);

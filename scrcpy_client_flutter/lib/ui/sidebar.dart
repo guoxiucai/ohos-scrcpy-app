@@ -141,10 +141,6 @@ class _MediaCapturePanelState extends State<_MediaCapturePanel> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(result.message)),
       );
-    } else if (!wasRecordingLocked) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('录制过程中不允许切换分辨率或帧率')),
-      );
     }
   }
 
