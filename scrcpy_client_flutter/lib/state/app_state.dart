@@ -400,18 +400,7 @@ class AppState extends ChangeNotifier {
       return const AppActionResult.fail('录制任务正在进行');
     }
 
-    final result = await decoder.startRecording(
-      width: cfg.width,
-      height: cfg.height,
-      fps: cfg.fps,
-      bitrate: targetBitrate,
-      sps: cfg.sps,
-      pps: cfg.pps,
-    );
-    if (!result.ok) {
-      return AppActionResult.fail(result.error ?? '启动录制失败');
-    }
-
+    // 1. 先设置等待状态，确保后续 "recording" 回调能正确匹配。
     recordingState = RecordingState.waitingForKeyframe;
     recordingDuration = Duration.zero;
     _recordingStartedAt = null;
@@ -426,8 +415,28 @@ class AppState extends ChangeNotifier {
       ));
       notifyListeners();
     });
-    sendControl(ControlSubType.requestKeyframe, Uint8List(0));
     notifyListeners();
+
+    // 2. 先启动 native 录制器，确保 recorder_->Start() 已完成。
+    final result = await decoder.startRecording(
+      width: cfg.width,
+      height: cfg.height,
+      fps: cfg.fps,
+      bitrate: targetBitrate,
+      sps: cfg.sps,
+      pps: cfg.pps,
+    );
+    if (!result.ok) {
+      _keyframeTimer?.cancel();
+      _keyframeTimer = null;
+      recordingState = RecordingState.idle;
+      notifyListeners();
+      return AppActionResult.fail(result.error ?? '启动录制失败');
+    }
+
+    // 3. 录制器就绪后才请求关键帧，确保 IDR 到达时 recorder 已 active。
+    sendControl(ControlSubType.requestKeyframe, Uint8List(0));
+
     return const AppActionResult.ok('正在等待关键帧…');
   }
 

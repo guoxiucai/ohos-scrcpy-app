@@ -363,7 +363,9 @@ void H264Mp4Recorder::Feed(const std::vector<uint8_t>& annex_b,
   const auto now = std::chrono::steady_clock::now();
 
   if (!impl_->writing) {
-    if (!keyframe || !converted.contains_idr) return;
+    // 以 NAL 单元中的 IDR 检测为准，不单独依赖编码器 keyframe 标志。
+    // Release 模式下 MethodChannel bool 编解码可能出现类型不一致。
+    if (!converted.contains_idr) return;
     impl_->writing = true;
     impl_->last_frame_time = now;
     impl_->elapsed_us = 0;
@@ -392,7 +394,7 @@ void H264Mp4Recorder::Feed(const std::vector<uint8_t>& annex_b,
   impl_->pending = std::make_unique<PendingFrame>();
   impl_->pending->data = std::move(converted.annex_b);
   impl_->pending->pts_us = impl_->elapsed_us;
-  impl_->pending->keyframe = keyframe && converted.contains_idr;
+  impl_->pending->keyframe = converted.contains_idr;
 }
 
 MediaOperationResult H264Mp4Recorder::Stop() {

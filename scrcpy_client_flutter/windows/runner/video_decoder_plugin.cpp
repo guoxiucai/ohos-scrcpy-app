@@ -204,8 +204,14 @@ void VideoDecoderPlugin::HandleMethodCall(
 
     bool keyframe = false;
     auto it2 = args.find(EncodableValue("keyframe"));
-    if (it2 != args.end() && std::holds_alternative<bool>(it2->second)) {
-      keyframe = std::get<bool>(it2->second);
+    if (it2 != args.end()) {
+      if (std::holds_alternative<bool>(it2->second)) {
+        keyframe = std::get<bool>(it2->second);
+      } else if (std::holds_alternative<int32_t>(it2->second)) {
+        keyframe = std::get<int32_t>(it2->second) != 0;
+      } else if (std::holds_alternative<int64_t>(it2->second)) {
+        keyframe = std::get<int64_t>(it2->second) != 0;
+      }
     }
 
     int64_t pts_us = 0;
@@ -237,9 +243,9 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
     MediaOperationResult response =
         recorder_->Start(std::get<EncodableMap>(*call.arguments()));
+    // 请求 I 帧不一定在所有编码器上生效；若缓存中有最近的关键帧则立即注入，
+    // 确保录制不会因等不到 IDR 而超时。新帧到达后会被自然写入覆盖。
     if (response.ok && !latest_h264_keyframe_.empty()) {
-      // 静止画面可能不会产生新输入帧，复用当前视频配置下缓存的 IDR
-      // 立即启动录制；录制时间戳仍由本地单调时钟生成。
       recorder_->Feed(latest_h264_keyframe_, true, 0);
     }
     result->Success(EncodeMediaResult(response));
