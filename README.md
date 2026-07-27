@@ -5,175 +5,284 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-lightgrey.svg" alt="Platform">
-  <a href="https://github.com/guoxiucai/ohos-scrcpy-app/releases"><img src="https://img.shields.io/github/v/release/guoxiucai/ohos-scrcpy-app" alt="Release"></a>
+  <strong>面向 OpenHarmony 设备的实时投屏、远程控制与 HDC 调试工具</strong>
 </p>
 
 <p align="center">
-  <strong>OpenHarmony 设备实时投屏与远程控制工具</strong>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/version-1.0.2-brightgreen.svg" alt="Version 1.0.2">
+  <img src="https://img.shields.io/badge/client-macOS%20%7C%20Windows-lightgrey.svg" alt="Client: macOS and Windows">
+  <img src="https://img.shields.io/badge/device-OpenHarmony-orange.svg" alt="Device: OpenHarmony">
 </p>
 
 <p align="center">
-  <a href="#快速上手">快速上手</a> •
-  <a href="#功能特性">功能特性</a> •
-  <a href="#效果演示">效果演示</a> •
-  <a href="#从源码构建">从源码构建</a> •
-  <a href="#已知限制">已知限制</a> •
-  <a href="#roadmap">Roadmap</a>
+  <a href="#功能特性">功能特性</a> ·
+  <a href="#快速开始">快速开始</a> ·
+  <a href="#工作原理">工作原理</a> ·
+  <a href="#从源码构建">从源码构建</a> ·
+  <a href="#签名与系统权限">签名与权限</a> ·
+  <a href="#已知限制">已知限制</a>
 </p>
 
 ---
 
-鸿镜是一个面向 OpenHarmony 设备的投屏调试工具。Flutter 桌面客户端通过 `hdc fport` 端口转发与设备上常驻的系统服务通信，实时镜像屏幕并提供触控注入、应用管理、终端模拟等控制功能。
+鸿镜由运行在 OpenHarmony 设备上的系统 HAP 和运行在 macOS/Windows 上的 Flutter 桌面客户端组成。客户端通过 `hdc fport` 与设备端服务建立本地 TCP 通道，在同一连接中传输 H.264 视频流、设备状态、心跳和控制消息。
 
-本项目方案设计和编码主要通过`Claude Code`实现，UI采用`ui-ux-pro-max`美化。
+当前版本为 **1.0.2**。macOS 与 Windows 客户端已经支持投屏、控制、MP4 录制和 PNG 截图；Linux 客户端尚在规划中。
 
-本项目的AI过程文档参考`docs`目录和`spec_doc`目录。
+> 服务端使用屏幕采集和输入注入等系统能力，需要 Full SDK、系统应用签名以及设备权限白名单。普通应用签名无法直接使用全部功能。
 
-## 效果演示
+## 效果展示
 
 ![主界面](https://cos-pro-pub.cvtestatic.com/seewo-school/1d824417-f8e2-8e14-e94c-ad435158fe58)
 ![主界面](https://cos-pro-pub.cvtestatic.com/seewo-school/d5181e88-5641-46e6-2902-b5c8af36f969)
-<!-- 更多截图或 GIF，在此补充 -->
 
 ## 功能特性
 
 | 功能 | 说明 |
-|------|------|
-| 🖥️ 实时投屏 | H.264 硬件编码 + 平台原生硬件解码，低延迟流畅画面 |
-| 👆 触控注入 | 鼠标操控设备触摸屏（支持单点触摸） |
-| 📱 应用管理 | HAP 安装 / 卸载、查看已安装应用列表 |
-| 🔊 音量控制 | 远程调节设备音量 |
-| 🔆 亮度控制 | 远程调节设备亮度 |
-| ⌨️ 功能键 | 返回、主页、最近任务等系统按键模拟 |
-| 💻 模拟终端 | 内嵌 hdc shell 终端，直接操作设备命令行 |
-| 🎛️ 动态参数 | 运行时调整分辨率、码率、帧率 |
+| --- | --- |
+| 实时投屏 | 设备端 H.264 硬件编码，macOS 使用 VideoToolbox，Windows 使用 Media Foundation/D3D11 解码 |
+| 录制视频 | 将接收的 H.264 码流封装为 MP4，自动保存到系统桌面 |
+| 当前帧截图 | 从平台解码器获取当前画面并保存为 PNG |
+| 鼠标与触控 | 单点触摸、鼠标按键、滚轮及坐标映射 |
+| 键盘与文本输入 | 转发常用键盘事件，支持向设备当前焦点输入框发送 UTF-8 文本 |
+| 设备控制 | 电源、返回、主页、音量和亮度控制 |
+| 视频参数 | 运行时切换分辨率、码率和帧率；录制期间自动锁定相关参数 |
+| 应用管理 | 通过客户端本地 HDC 安装 HAP、查看应用列表并卸载应用 |
+| HDC 终端 | 内嵌 PTY 终端，可直接执行设备 Shell 命令 |
+| USB/Wi-Fi 连接 | 使用 HDC 已发现的设备，不要求设备额外开放局域网端口 |
 
-## 支持平台
+## 平台支持
 
-**服务端（设备侧）：**
-- OpenHarmony 5.0+（API 15+）
-- 支持 H.264 硬件编码的开发板/设备（不支持时自动降级为 JPEG 模式）
+| 组件 | 平台 | 状态 |
+| --- | --- | --- |
+| 设备端服务 | OpenHarmony 5.0+（API 15+） | 已支持 |
+| 桌面客户端 | macOS | 已支持 |
+| 桌面客户端 | Windows 10/11 | 已支持 |
+| 桌面客户端 | Linux | 规划中，仅保留平台占位 |
 
-**客户端（PC 侧）：**
-- macOS（VideoToolbox 硬件解码）
-- Windows（MediaFoundation 硬件解码）
-- Linux（计划中）
+设备需要提供 `OH_AVScreenCapture`，并且最好具有可用的 H.264 硬件编码器。H.264 初始化失败时服务端会尝试降级到 JPEG 投屏，但 MP4 录制仅支持 H.264 模式。
 
-## 快速上手
+## 快速开始
 
-### 1. 下载预编译包
+### 1. 获取安装包
 
-从 [Releases](https://github.com/guoxiucai/ohos-scrcpy-app/releases) 页面或 `release_packages/` 目录下载：
+可以从 [GitHub Releases](https://github.com/guoxiucai/ohos-scrcpy-app/releases) 下载最新版本，也可以使用仓库中 `release_packages/<版本>/` 下的预编译文件：
 
-| 文件 | 说明 |
-|------|------|
-| `OHScrcpyServer.hap` | 设备端服务 |
-| `HongJing-x.x.x.dmg` | macOS 客户端 |
-| `HongJing-Setup-x.x.x.exe` | Windows 客户端 |
+| 文件 | 用途 |
+| --- | --- |
+| `OHScrcpyServer.hap` | OpenHarmony 设备端服务 |
+| `HongJing-<版本>.dmg` | macOS 客户端 |
+| `HongJing-Setup-<版本>.exe` | Windows 客户端安装程序 |
 
-### 2. 安装服务端
+> 预编译 HAP 的签名必须被目标系统信任，并与设备权限白名单一致。不同厂商或不同系统镜像通常需要重新签名并更新白名单。
+
+### 2. 安装设备端服务
+
+确认 HDC 已经识别目标设备：
 
 ```bash
-# 连接设备后安装 HAP
+hdc list targets
 hdc install -r OHScrcpyServer.hap
 ```
 
-> ⚠️ 服务端需要系统应用签名和权限白名单配置，详见[服务端签名与权限白名单](#服务端签名与权限白名单)。
+服务端监听设备本机的 `127.0.0.1:53535`，不直接监听设备局域网地址。
 
-### 3. 启动客户端
+### 3. 启动桌面客户端
 
-确保电脑与 OpenHarmony 设备已经通过 HDC 连接（USB或WiFi都可以）。
+1. 通过 USB 或 HDC Wi-Fi 方式连接设备。
+2. 启动鸿镜客户端。
+3. 在设备列表中选择目标设备并点击连接。
+4. 画面就绪后即可使用侧边栏进行控制、录制、截图、应用管理和文本输入。
 
-打开客户端应用 → 选择已连接的设备 → 点击连接，即可看到实时投屏画面。
+客户端发布包内置 HDC 工具；源码开发时也会按系统 `PATH` 和常见 SDK 目录查找 HDC。
 
-客户端已经内置HDC工具，可以直接运行。（本地开发期间需要确保 PC PATH 上 `hdc` 命令可用）。
+## 工作原理
 
-## 项目架构
-
+```text
+macOS / Windows 客户端
+        │
+        │ hdc fport tcp:<本机动态端口> tcp:53535
+        ▼
+127.0.0.1:<本机动态端口>
+        │
+        │ HDC 转发
+        ▼
+OpenHarmony 设备 127.0.0.1:53535
+        │
+        ├── OH_AVScreenCapture
+        ├── H.264 VideoEncoder Surface
+        ├── TCP 视频/状态/控制协议
+        └── 输入事件与设备控制
 ```
-┌────────────────────┐         hdc fport          ┌────────────────────────┐
-│   OpenHarmony 设备  │◄─────────────────────────►│     PC 客户端 (Flutter)  │
-│                    │      TCP over USB/网络       │                        │
-│  ScrcpyService     │                            │  hdc CLI 包装           │
-│  ├─ ScreenCapture  │  ──── H.264 视频流 ────▶   │  ├─ 协议解析            │
-│  ├─ VideoEncoder   │                            │  ├─ 原生硬件解码         │
-│  ├─ TcpServer      │  ◄─── 控制指令 ────────    │  ├─ Flutter Texture 渲染 │
-│  └─ InputInjector  │                            │  └─ UI（投屏/终端/侧栏） │
-└────────────────────┘                            └────────────────────────┘
+
+基础协议帧格式为：
+
+```text
+4B type（大端）| 4B payload length（大端）| payload
 ```
 
-- **服务端**：以 `ServiceExtensionAbility` 形式常驻运行，通过 NAPI 调用 OH Native 截屏和编码 API，截屏 Surface 直连编码器 Surface 实现零拷贝
-- **客户端**：Flutter 桌面应用，通过 `hdc fport` 端口转发建立 TCP 连接，使用平台原生解码器（MethodChannel）硬件解码 H.264 流
+- 设备端以 `ServiceExtensionAbility` 运行，无客户端连接时释放截屏和编码资源。
+- H.264 采集 Surface 直接连接编码器 Surface，避免在 CPU 侧复制完整图像。
+- 客户端通过 `hdc fport` 建立转发，不增加设备 LAN 直连协议。
+- macOS 和 Windows 使用平台原生解码器，并通过 Flutter Texture 渲染。
+- 开始录制时服务端重建 VideoEncoder，使录制码流从新的 SPS/PPS 和 IDR 开始；ScreenCapture 实例保持复用。
 
-### 服务端录屏方案
+更完整的设计说明参见：
 
-服务端录屏存在两种技术路线，各有适用场景：
-
-| | 方案一：DisplayManager 显存直读 | 方案二：OH_AVScreenCapture（当前采用） |
-|---|---|---|
-| 产物形态 | 系统可执行文件（需源码编译进固件） | 标准 HAP 应用包 |
-| 编码方式 | 截屏 RGBA → CPU 转 NV12 → 硬编码 | 截屏 Surface 直连编码器（零拷贝） |
-| Surface XComponent | ✅ 可采集（游戏、视频播放器） | ❌ 不可采集 |
-| 部署更新 | 需随固件 OTA 更新 | 可独立安装/更新 HAP |
-| 开发门槛 | 需 OH 完整系统源码树 | SDK + NDK 即可 |
-
-当前项目采用**方案二**，优势是开发部署简单、Surface 零拷贝延迟低；局限是无法采集 Surface 类型 XComponent 内容。方案一作为未来 Roadmap 规划，用于解决游戏/视频播放器投屏需求。
-
-> 两种方案的完整设计对比见 [服务端录屏架构设计文档](docs/scrcpy_server_plan.md)。
+- [项目设计](docs/design.md)
+- [服务端采集方案](docs/scrcpy_server_plan.md)
+- [录制与截图设计](docs/recording_screenshot_design.md)
+- [Windows 开发指南](docs/windows_dev_guide.md)
+- [踩坑与经验记录](docs/lessons-learned.md)
 
 ## 从源码构建
 
-### 服务端签名与权限白名单
+### 获取源码
 
-服务端以系统应用身份运行，需要完成以下配置：
-
-#### 替换签名配置
-
-将 `scrcpy_server/signature/scrcpy_server.json` 替换为你自己证书签发的版本。`bundle-info.bundle-name` 保持 `com.ohos.scrcpy.server` 不变，`app-privilege-capabilities` 需包含：
-
+```bash
+git clone https://github.com/guoxiucai/ohos-scrcpy-app.git
+cd ohos-scrcpy-app
 ```
+
+### 构建设备端服务
+
+开发环境：
+
+| 工具 | 要求 |
+| --- | --- |
+| DevEco Studio | 6.0 或兼容版本 |
+| OpenHarmony SDK | Full SDK，当前工程 `compileSdkVersion` 为 23 |
+| 兼容版本 | `compatibleSdkVersion` 为 15 |
+| Native 工具链 | C++17，当前目标 ABI 为 `arm64-v8a` |
+
+服务端使用系统 API，Public SDK 无法完成编译。请从 OpenHarmony 官方构建或发行渠道获取对应版本的 Full SDK，并确认 SDK 中包含项目引用的系统 API 声明。
+
+macOS 默认构建命令：
+
+```bash
+cd scrcpy_server
+
+/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
+  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
+  clean --mode module -p product=default assembleHap \
+  --analyze=normal --parallel --incremental --daemon
+```
+
+构建产物默认位于：
+
+```text
+scrcpy_server/entry/build/default/outputs/default/OHScrcpyServer.hap
+```
+
+安装属于设备变更，请在确认签名和权限白名单正确后执行：
+
+```bash
+hdc install -r entry/build/default/outputs/default/OHScrcpyServer.hap
+```
+
+Windows 环境可以通过 DevEco Studio 构建，或将上述 Node 与 Hvigor 路径替换为本机安装路径。
+
+### 构建 Flutter 客户端
+
+基础环境：
+
+- Flutter 3.22.1 或更高版本
+- Dart 3.4 或更高版本
+- macOS：Xcode 15 或更高版本
+- Windows：Visual Studio 2022，安装“使用 C++ 的桌面开发”工作负载
+
+安装依赖并运行检查：
+
+```bash
+cd scrcpy_client_flutter
+flutter pub get
+flutter analyze
+flutter test
+```
+
+macOS：
+
+```bash
+flutter run -d macos
+flutter build macos --release
+```
+
+Windows：
+
+```powershell
+flutter run -d windows
+flutter build windows --release
+```
+
+打包脚本可能使用本机签名、公证或安装包工具，仅在完成本地环境配置后执行：
+
+```bash
+# macOS：生成 DMG
+bash scripts/package_mac.sh
+```
+
+```powershell
+# Windows：使用 Inno Setup 生成安装程序
+powershell -ExecutionPolicy Bypass -File scripts\package_win.ps1
+```
+
+macOS 客户端当前关闭 App Sandbox，以便启动 HDC 子进程并建立本地 TCP 连接。
+
+## 签名与系统权限
+
+### 签名要求
+
+服务端 Bundle 名称为：
+
+```text
+com.ohos.scrcpy.server
+```
+
+部署到自己的设备或系统镜像时：
+
+1. 使用目标系统信任的应用证书和 Profile 重新签名。
+2. Profile 的 `app-privilege-capabilities` 至少包含：
+
+```text
 AllowAppUsePrivilegeExtension
 KeepAlive
 AllowAppDesktopIconHide
 ```
 
-签名 Profile 的 `acls.allowed-acls` 还需包含以下 system_core 权限：
+3. Profile 的 `acls.allowed-acls` 至少包含：
 
-```json
-{
-  "acls": {
-    "allowed-acls": [
-      "ohos.permission.CAPTURE_SCREEN",
-      "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE",
-      "ohos.permission.INJECT_INPUT_EVENT"
-    ]
-  }
-}
+```text
+ohos.permission.CAPTURE_SCREEN
+ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE
+ohos.permission.INJECT_INPUT_EVENT
 ```
 
-#### 写入系统白名单（需 root）
+4. 将应用证书 SHA-256 指纹写入目标系统的应用能力和权限白名单。
 
-设备上需写入两个系统配置文件，参考 `scrcpy_server/signature/` 目录下的模板。如果你自己替换了签名证书，需要将 `app_signature` 换成你自己证书的指纹：
+> 不要把生产私钥、证书密码或设备专用签名材料提交到公开仓库。仓库中的配置路径只用于说明工程结构，发布者应使用自己的签名材料。
 
-当前服务端在 `scrcpy_server/entry/src/main/module.json5` 中声明的权限如下：
+### 当前声明权限
 
-| 权限 | 用途 | API 23 权限级别 / 授权方式 |
-|------|------|----------------------------|
-| `ohos.permission.INTERNET` | 建立 TCP 服务与通信 | normal / system_grant |
-| `ohos.permission.GET_WIFI_INFO` | 获取设备网络信息 | normal / system_grant |
-| `ohos.permission.CUSTOM_SCREEN_CAPTURE` | 获取屏幕图像 | normal / user_grant |
-| `ohos.permission.CAPTURE_SCREEN` | 执行系统屏幕采集 | system_core / system_grant |
-| `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` | 免除每次录屏的用户授权 | system_core / system_grant |
-| `ohos.permission.KEEP_BACKGROUND_RUNNING` | 在后台持续采集与推流 | normal / system_grant |
-| `ohos.permission.START_ABILITIES_FROM_BACKGROUND` | 从后台启动必要的 Ability | system_basic / system_grant |
-| `ohos.permission.INJECT_INPUT_EVENT` | 注入触摸、鼠标和按键事件 | system_core / system_grant |
-| `ohos.permission.GET_INSTALLED_BUNDLE_LIST` | 获取可卸载应用列表 | system_basic / user_grant |
-| `ohos.permission.RUNNING_LOCK` | 获取运行锁以保持后台运行 | normal / system_grant |
-| `ohos.permission.ACCESS_NOTIFICATION_POLICY` | 调节系统音量策略 | normal / system_grant |
+以下内容以 [`scrcpy_server/entry/src/main/module.json5`](scrcpy_server/entry/src/main/module.json5) 为准：
 
-**`/system/etc/app/install_list_capability.json`** — 追加：
+| 权限 | 用途 |
+| --- | --- |
+| `ohos.permission.INTERNET` | TCP 服务与本地转发通信 |
+| `ohos.permission.GET_WIFI_INFO` | 获取设备网络相关信息 |
+| `ohos.permission.CUSTOM_SCREEN_CAPTURE` | 使用定制屏幕采集能力 |
+| `ohos.permission.CAPTURE_SCREEN` | 执行系统屏幕采集 |
+| `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` | 免除每次采集的交互式授权 |
+| `ohos.permission.KEEP_BACKGROUND_RUNNING` | 服务后台运行 |
+| `ohos.permission.START_ABILITIES_FROM_BACKGROUND` | 服务在必要时从后台启动 Ability |
+| `ohos.permission.INJECT_INPUT_EVENT` | 注入触摸、鼠标和按键事件 |
+| `ohos.permission.GET_INSTALLED_BUNDLE_LIST` | 查询可管理的已安装应用 |
+| `ohos.permission.RUNNING_LOCK` | 获取运行锁 |
+| `ohos.permission.ACCESS_NOTIFICATION_POLICY` | 调节设备音量策略 |
+
+其中 `CAPTURE_SCREEN`、`EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 和 `INJECT_INPUT_EVENT` 属于受限系统权限，需要签名 Profile ACL；`CUSTOM_SCREEN_CAPTURE` 和 `GET_INSTALLED_BUNDLE_LIST` 等用户授权权限可通过系统白名单预授权。
+
+仓库当前签名材料对应的白名单示例如下；如果替换签名证书，必须将 `app_signature` 同步替换为新证书的 SHA-256 指纹：
 
 ```json
 {
@@ -185,162 +294,80 @@ AllowAppDesktopIconHide
 }
 ```
 
-**`/system/etc/app/install_list_permissions.json`** — 追加：
-
 ```json
 {
   "bundleName": "com.ohos.scrcpy.server",
   "app_signature": ["8E93863FC32EE238060BF69A9B37E2608FFFB21F93C862DD511CBAC9F30024B5"],
   "permissions": [
-    { "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",           "userCancellable": false },
-    { "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",       "userCancellable": false }
+    {
+      "name": "ohos.permission.CUSTOM_SCREEN_CAPTURE",
+      "userCancellable": false
+    },
+    {
+      "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",
+      "userCancellable": false
+    }
   ]
 }
 ```
 
-> `CAPTURE_SCREEN`、`EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 和 `INJECT_INPUT_EVENT` 为 system_core 权限，还必须包含在签名 Profile 的 `allowed-acls` 中。`CUSTOM_SCREEN_CAPTURE` 与 `GET_INSTALLED_BUNDLE_LIST` 为 user_grant 权限，通过系统白名单预授权，避免常驻服务等待交互式授权。
->
-> `ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 从 API 15 起提供；低于 API 15 的设备可移除此项，但每次截屏都需要用户手动授权。
-
-写入后重启设备使白名单生效。
-
-### 服务端开发环境
-
-| 工具 | 版本 | 说明 |
-|------|------|------|
-| DevEco Studio | 6.0+ | OpenHarmony 应用 IDE |
-| OpenHarmony SDK | API 23 | `compileSdkVersion: 23`，`compatibleSdkVersion: 15` |
-| Full SDK | 对应 API 版本 | **必须手动替换**，见下方说明 |
-
-#### Full SDK 替换
-
-服务端使用了 `ohos.permission.CAPTURE_SCREEN`、`inputEventClient.injectTouchEvent` 等系统 API，这些仅在 **Full SDK** 中提供，Public SDK 中不包含。**必须手动下载 Full SDK 并替换。**
-
-**获取 Full SDK：**
-
-通过 [OpenHarmony CI 数字化平台](https://dcp.openharmony.cn/workbench/cicd/dailybuild/dailylist) 查询并下载对应版本的 `ohos-sdk-full` 包。
-
-以OpenHarmony 6.0 Full SDK 为例，直接下载：
-- macOS (ARM)：[ohos-sdk-full_6.0 Mac-M1](https://cidownload.openharmony.cn/version/Master_Version/OpenHarmony_6.0.0.49/20260227002444/20260227002444-L2-SDK-MAC-M1-FULL.tar.gz)
-- Windows / Linux：[ohos-sdk-full_6.0 Release](https://cidownload.openharmony.cn/version/Master_Version/OpenHarmony_6.0.0.49/20260225_043115/version-Master_Version-OpenHarmony_6.0.0.49-20260225_043115-ohos-sdk-full_6.0-Release.tar.gz)
-
-**替换步骤：**
-
-1. 下载并解压 Full SDK
-2. 替换 DevEco Studio 的 SDK 目录：
-   - macOS：`~/Library/OpenHarmony/Sdk/<version>/`
-   - Windows：`%LOCALAPPDATA%\OpenHarmony\Sdk\<version>\`
-3. 重启 DevEco Studio，确认 `ets/api/` 下存在 `@ohos.multimodalInput.inputEventClient.d.ts` 等系统 API 声明文件
-
-#### 编译
-
-```bash
-cd scrcpy_server
-
-# macOS
-/Applications/DevEco-Studio.app/Contents/tools/node/bin/node \
-  /Applications/DevEco-Studio.app/Contents/tools/hvigor/bin/hvigorw.js \
-  clean --mode module -p product=default assembleHap \
-  --analyze=normal --parallel --incremental --daemon
-
-# 安装到设备
-hdc install -r entry/build/default/outputs/default/entry-default-signed.hap
-```
-
-Windows 环境下将路径替换为 DevEco Studio 的 Windows 安装路径。
-
-### 客户端开发环境
-
-| 工具 | 版本 | 说明 |
-|------|------|------|
-| Flutter | 3.22.1+ | 桌面应用框架 |
-| Dart | 3.4+ | 随 Flutter 一起安装 |
-| hdc | — | 设备调试工具，需在系统 PATH 中可用 |
-
-#### macOS
-
-需要 Xcode 15+。项目已关闭 App Sandbox（允许 hdc 进程调用和 TCP 连接）。
-
-```bash
-cd scrcpy_client_flutter
-flutter pub get
-flutter run -d macos
-
-# 发布构建
-flutter build macos --release
-bash scripts/package_mac.sh        # 生成 .dmg（支持签名+公证）
-```
-
-#### Windows
-
-需要 Visual Studio 2022+（含 C++ 桌面开发工作负载）。
-
-```bash
-cd scrcpy_client_flutter
-flutter pub get
-flutter run -d windows
-
-# 发布构建
-flutter build windows --release
-powershell -ExecutionPolicy Bypass -File scripts\package_win.ps1  # 生成安装包（Inno Setup）
-```
-
-#### Linux
-
-> Linux 版本正在计划中，尚未完成视频解码和渲染适配。欢迎贡献！
+实际文件位置和白名单格式可能随系统版本或厂商镜像变化，请以目标系统源码及安全策略为准。
 
 ## 已知限制
 
-1. **H.264 硬件编码器兼容性**：部分开发板（如 RK 系列芯片）的编码器不支持 RGBA→NV12 自动转换，会自动降级为 JPEG 模式（帧率约 10fps），画面有明显卡顿。
-
-2. **Surface 类型 XComponent 不可采集**：`OH_AVScreenCapture` 无法获取 Surface 类型 XComponent 的内容（如游戏画面、视频播放器），这些区域在投屏画面中显示为黑色。这是 OpenHarmony 系统录屏 API 的已知限制。
-
-3. **录屏免授权需要 API 15+**：`ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE` 从 API 15 起提供。低于 API 15 的设备每次启动截屏需用户手动点击"同意"授权弹窗。
-
-## Roadmap
-
-- [ ] 服务端支持 DisplayManager 显存直读方案，解决 Surface 类型 XComponent 不可采集问题
-- [ ] 客户端支持 Linux 平台
-- [ ] 客户端文本发送 / 键盘实时输入功能
-- [ ] Flutter 框架版本升级跟进
+1. `OH_AVScreenCapture` 可能无法采集 Surface 类型 XComponent 的内容，例如部分游戏或视频播放器；对应区域可能显示为黑色。
+2. 服务端依赖系统签名、Full SDK 和受限权限白名单，预编译 HAP 不保证可以直接安装到所有 OpenHarmony 设备。
+3. 不同芯片的 H.264 硬件编码器能力存在差异。H.264 初始化失败时会降级为 JPEG 投屏，JPEG 模式不支持 MP4 录制。
+4. Linux 客户端尚未实现原生解码、录制、截图和渲染。
+5. 当前自动化测试覆盖有限，跨平台媒体功能仍建议在真实设备上验证。
 
 ## 仓库结构
 
-```
-ohos-scrcpy-app/
-├── scrcpy_server/             # OpenHarmony 系统服务端
-│   ├── AppScope/app.json5     # 应用配置（bundleName、keepAlive）
-│   ├── signature/             # 签名模板文件
+```text
+.
+├── scrcpy_server/                 # OpenHarmony 系统 HAP
+│   ├── AppScope/app.json5         # Bundle、版本和 keepAlive
+│   ├── build-profile.json5        # SDK、产品和签名配置
 │   └── entry/src/main/
-│       ├── module.json5       # mainElement = ScrcpyService
-│       ├── cpp/               # NAPI 模块（截屏、编码、TCP）
-│       └── ets/scrcpyservice/ # ArkTS 服务层（生命周期、控制分发）
-├── scrcpy_client_flutter/     # Flutter 桌面客户端
-│   ├── lib/
-│   │   ├── hdc/               # hdc CLI 包装
-│   │   ├── net/               # 协议编解码 + TCP 客户端
-│   │   ├── decoder/           # 平台原生解码抽象层
-│   │   ├── state/             # 中央状态管理
-│   │   └── ui/                # 界面组件
-│   ├── macos/Runner/          # macOS VideoToolbox 解码插件
-│   ├── windows/runner/        # Windows MediaFoundation 解码插件
-│   └── scripts/               # 打包脚本
-├── release_packages/          # 预编译包
-└── docs/                      # 技术设计文档
+│       ├── module.json5           # Ability 与权限
+│       ├── ets/scrcpyservice/     # 服务生命周期和控制协议
+│       └── cpp/                   # TCP、屏幕采集、编码和 NAPI
+├── scrcpy_client_flutter/         # macOS/Windows Flutter 客户端
+│   ├── lib/                       # HDC、协议、状态和 UI
+│   ├── macos/Runner/              # VideoToolbox 与 AVFoundation
+│   ├── windows/runner/            # Media Foundation、D3D11 与 Media Sink
+│   └── scripts/                   # 平台打包脚本
+├── docs/                          # 架构、平台设计和验证记录
+├── images/                        # README 与应用图片
+└── release_packages/              # 历史预编译发布包
 ```
 
-## 贡献指南
+## Roadmap
 
-欢迎提交 Issue 和 Pull Request！
+- [ ] Linux 客户端原生解码、渲染、录制与截图
+- [ ] 探索 DisplayManager 显存读取方案，改善 Surface XComponent 采集限制
+- [ ] 扩充协议、录制封装和跨平台集成测试
+- [ ] 持续验证更多 OpenHarmony 设备和硬件编码器
 
-- **Bug 报告**：请附上设备型号、OH 版本、客户端平台、复现步骤
-- **功能建议**：请先开 Issue 讨论
-- **代码贡献**：Fork → 新建分支 → 提交 PR，确保 `flutter analyze` 和服务端编译通过
+## 参与贡献
 
-## 致谢
+欢迎提交 Issue 和 Pull Request。开始贡献前请阅读 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
-本项目的设计思路受 [scrcpy](https://github.com/Genymobile/scrcpy)（Android 投屏工具）启发，针对 OpenHarmony 平台的 API 和架构进行了全新实现。
+提交问题时建议附上：
+
+- OpenHarmony 版本、设备型号和芯片平台
+- 客户端操作系统与鸿镜版本
+- USB/Wi-Fi 连接方式
+- 可复现步骤、日志和必要的截图
+
+提交代码前至少完成与改动范围相符的静态检查和构建验证。请勿在 Issue、日志或 PR 中上传私钥、密码、设备证书或内部网络信息。
+
+## 致谢与说明
+
+本项目受 [Genymobile/scrcpy](https://github.com/Genymobile/scrcpy) 的设计思路启发，并基于 OpenHarmony API 重新实现设备端和桌面端通信链路。本项目与 Genymobile/scrcpy 项目不存在隶属关系。
+
+项目开发过程中使用了 AI 辅助工具；功能行为、兼容性和安全边界以当前源码与实际验证结果为准。
 
 ## 开源协议
 
-本项目采用 [MIT License](LICENSE) 开源。
+本项目基于 [MIT License](LICENSE) 开源。
