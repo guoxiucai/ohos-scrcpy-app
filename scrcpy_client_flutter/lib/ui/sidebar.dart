@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -46,6 +47,13 @@ class Sidebar extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           _Card(
+            icon: Icons.video_camera_back_outlined,
+            title: '录制与截图',
+            subtitle: 'RECORD · CAPTURE',
+            child: _MediaCapturePanel(state: state),
+          ),
+          const SizedBox(height: 10),
+          _Card(
             icon: Icons.keyboard_outlined,
             title: '文本输入',
             subtitle: 'TEXT INPUT',
@@ -62,6 +70,178 @@ class Sidebar extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _MediaCapturePanel extends StatefulWidget {
+  final AppState state;
+  const _MediaCapturePanel({required this.state});
+
+  @override
+  State<_MediaCapturePanel> createState() => _MediaCapturePanelState();
+}
+
+class _MediaCapturePanelState extends State<_MediaCapturePanel> {
+  late StreamSubscription<MediaNotice> _noticeSubscription;
+
+  @override
+  void initState() {
+    super.initState();
+    _listen(widget.state);
+  }
+
+  @override
+  void didUpdateWidget(covariant _MediaCapturePanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.state != widget.state) {
+      _noticeSubscription.cancel();
+      _listen(widget.state);
+    }
+  }
+
+  void _listen(AppState state) {
+    _noticeSubscription = state.mediaNotices.listen(_showNotice);
+  }
+
+  Future<void> _showNotice(MediaNotice notice) async {
+    if (!mounted) return;
+    final label = notice.kind == MediaKind.recording ? '录制' : '截图';
+    final result = notice.result;
+    if (!result.ok || result.path == null) {
+      await showResultDialog(
+        context,
+        ok: false,
+        title: '$label失败',
+        detail: result.error ?? '未知错误',
+      );
+      return;
+    }
+    final open = await showMediaSavedDialog(
+      context,
+      title: '$label已保存',
+      path: result.path!,
+    );
+    if (!mounted || !open) return;
+    final reveal = await widget.state.revealMediaFile(result.path!);
+    if (!mounted || reveal.ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(reveal.message)),
+    );
+  }
+
+  Future<void> _toggleRecording() async {
+    final state = widget.state;
+    final wasRecordingLocked = state.recordingLocked;
+    final result = wasRecordingLocked
+        ? await state.stopRecording()
+        : await state.startRecording();
+    if (!mounted) return;
+    if (!result.ok) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.message)),
+      );
+    } else if (!wasRecordingLocked) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('录制过程中不允许切换分辨率或帧率')),
+      );
+    }
+  }
+
+  Future<void> _capture() async {
+    final result = await widget.state.captureScreenshot();
+    if (!mounted || result.ok) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(result.message)),
+    );
+  }
+
+  String _duration(Duration duration) {
+    final minutes = duration.inMinutes.remainder(60).toString().padLeft(2, '0');
+    final seconds = duration.inSeconds.remainder(60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  void dispose() {
+    _noticeSubscription.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = widget.state;
+    final recording = state.recordingState == RecordingState.recording;
+    final waiting = state.recordingState == RecordingState.waitingForKeyframe;
+    final finalizing = state.recordingState == RecordingState.finalizing;
+    final recordLabel = finalizing
+        ? '保存中…'
+        : waiting
+            ? '取消准备'
+            : recording
+                ? '停止 · ${_duration(state.recordingDuration)}'
+                : '开始录制';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 34,
+                child: FilledButton.icon(
+                  onPressed: finalizing ||
+                          (!state.recordingLocked && !state.canStartRecording)
+                      ? null
+                      : _toggleRecording,
+                  style: recording
+                      ? FilledButton.styleFrom(
+                          backgroundColor: AppColors.danger,
+                          foregroundColor: Colors.white,
+                        )
+                      : null,
+                  icon: Icon(
+                    recording ? Icons.stop : Icons.fiber_manual_record,
+                    size: 14,
+                  ),
+                  label: Text(recordLabel),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            SizedBox(
+              height: 34,
+              child: OutlinedButton.icon(
+                onPressed: state.canCaptureScreenshot ? _capture : null,
+                icon: state.screenshotBusy
+                    ? const SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(strokeWidth: 1.5),
+                      )
+                    : const Icon(Icons.photo_camera_outlined, size: 14),
+                label: const Text('截图'),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          !state.mediaSupported
+              ? 'Linux 平台暂未实现，功能入口保留。'
+              : waiting
+                  ? '正在请求关键帧，收到 IDR 后开始计时。'
+                  : recording
+                      ? '录制中 · 分辨率与帧率已锁定'
+                      : '文件将自动保存至系统桌面。',
+          style: TextStyle(
+            fontSize: 10,
+            height: 1.4,
+            color: recording ? AppColors.warning : AppColors.textFaint,
+          ),
+        ),
+      ],
     );
   }
 }
@@ -156,7 +336,9 @@ class _CardState extends State<_Card> {
                 ],
               ),
             ),
-            crossFadeState: _expanded ? CrossFadeState.showSecond : CrossFadeState.showFirst,
+            crossFadeState: _expanded
+                ? CrossFadeState.showSecond
+                : CrossFadeState.showFirst,
             duration: const Duration(milliseconds: 180),
           ),
         ],
@@ -287,8 +469,10 @@ class _InstallPanelState extends State<_InstallPanel> {
             onPressed: canInstall ? _pick : null,
             icon: _busy
                 ? const SizedBox(
-                    width: 12, height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accent),
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 1.5, color: AppColors.accent),
                   )
                 : const Icon(Icons.upload_file, size: 14),
             label: Text(_busy ? '安装中…' : '选择 .hap 文件'),
@@ -365,8 +549,7 @@ class _UninstallPanelState extends State<_UninstallPanel> {
       }
     });
     if (result.ok) {
-      await showResultDialog(context,
-          ok: true, title: '卸载成功', detail: bundle);
+      await showResultDialog(context, ok: true, title: '卸载成功', detail: bundle);
     } else {
       await showResultDialog(context,
           ok: false, title: '卸载失败：$bundle', detail: result.message);
@@ -389,21 +572,26 @@ class _UninstallPanelState extends State<_UninstallPanel> {
             Expanded(child: _BundleInput(controller: _ctrl)),
             const SizedBox(width: 6),
             SizedBox(
-              width: 32, height: 32,
+              width: 32,
+              height: 32,
               child: IconButton(
                 tooltip: '刷新应用列表',
-                onPressed: connected && !loading ? () => state.requestAppList() : null,
+                onPressed:
+                    connected && !loading ? () => state.requestAppList() : null,
                 padding: EdgeInsets.zero,
                 icon: loading
                     ? const SizedBox(
-                        width: 12, height: 12,
-                        child: CircularProgressIndicator(strokeWidth: 1.5, color: AppColors.accent),
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                            strokeWidth: 1.5, color: AppColors.accent),
                       )
                     : const Icon(Icons.refresh, size: 14),
                 style: IconButton.styleFrom(
                   backgroundColor: AppColors.bg,
                   side: const BorderSide(color: AppColors.borderStrong),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.sm)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.sm)),
                 ),
               ),
             ),
@@ -431,8 +619,10 @@ class _UninstallPanelState extends State<_UninstallPanel> {
             onPressed: _canSubmit ? _doUninstall : null,
             icon: _busy
                 ? const SizedBox(
-                    width: 12, height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 1.5, color: Colors.white),
                   )
                 : const Icon(Icons.delete_outline, size: 14),
             label: Text(_busy ? '卸载中…' : '卸载'),
@@ -489,7 +679,8 @@ class _BundleInput extends StatelessWidget {
           if (controller.text.isNotEmpty)
             GestureDetector(
               onTap: () => controller.clear(),
-              child: const Icon(Icons.close, size: 12, color: AppColors.textMuted),
+              child:
+                  const Icon(Icons.close, size: 12, color: AppColors.textMuted),
             ),
         ],
       ),
@@ -570,7 +761,8 @@ class _DeviceAppList extends StatelessWidget {
                     itemCount: apps.length,
                     itemBuilder: (ctx, i) {
                       final a = apps[i];
-                      return _BundleRow(bundle: a.bundle, onTap: () => onTap(a));
+                      return _BundleRow(
+                          bundle: a.bundle, onTap: () => onTap(a));
                     },
                   ),
                 ),
@@ -603,7 +795,8 @@ class _BundleRowState extends State<_BundleRow> {
         behavior: HitTestBehavior.opaque,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-          color: _hover ? AppColors.accent.withOpacity(0.12) : Colors.transparent,
+          color:
+              _hover ? AppColors.accent.withOpacity(0.12) : Colors.transparent,
           child: Text(
             widget.bundle,
             maxLines: 1,
@@ -633,23 +826,36 @@ class _ControlPanel extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Group(label: '导航', children: [
-          _CtlBtn(icon: Icons.arrow_back, label: '返回',
+          _CtlBtn(
+              icon: Icons.arrow_back,
+              label: '返回',
               onPressed: on ? () => _send(ControlSubType.backKey) : null),
-          _CtlBtn(icon: Icons.home_outlined, label: '主页',
+          _CtlBtn(
+              icon: Icons.home_outlined,
+              label: '主页',
               onPressed: on ? () => _send(ControlSubType.homeKey) : null),
         ]),
         const SizedBox(height: 10),
         _Group(label: '音量', children: [
-          _CtlBtn(icon: Icons.volume_down, label: '减小',
+          _CtlBtn(
+              icon: Icons.volume_down,
+              label: '减小',
               onPressed: on ? () => _send(ControlSubType.volumeDown) : null),
-          _CtlBtn(icon: Icons.volume_up, label: '增大',
+          _CtlBtn(
+              icon: Icons.volume_up,
+              label: '增大',
               onPressed: on ? () => _send(ControlSubType.volumeUp) : null),
         ]),
         const SizedBox(height: 10),
         _Group(label: '亮度', children: [
-          _CtlBtn(icon: Icons.brightness_low, label: '降低',
-              onPressed: on ? () => _send(ControlSubType.brightnessDown) : null),
-          _CtlBtn(icon: Icons.brightness_high, label: '提高',
+          _CtlBtn(
+              icon: Icons.brightness_low,
+              label: '降低',
+              onPressed:
+                  on ? () => _send(ControlSubType.brightnessDown) : null),
+          _CtlBtn(
+              icon: Icons.brightness_high,
+              label: '提高',
               onPressed: on ? () => _send(ControlSubType.brightnessUp) : null),
         ]),
       ],
@@ -695,7 +901,8 @@ class _CtlBtn extends StatefulWidget {
   final IconData icon;
   final String label;
   final VoidCallback? onPressed;
-  const _CtlBtn({required this.icon, required this.label, required this.onPressed});
+  const _CtlBtn(
+      {required this.icon, required this.label, required this.onPressed});
 
   @override
   State<_CtlBtn> createState() => _CtlBtnState();
@@ -729,7 +936,10 @@ class _CtlBtnState extends State<_CtlBtn> {
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _hover = true),
-      onExit: (_) => setState(() { _hover = false; _pressed = false; }),
+      onExit: (_) => setState(() {
+        _hover = false;
+        _pressed = false;
+      }),
       child: GestureDetector(
         onTapDown: enabled ? (_) => setState(() => _pressed = true) : null,
         onTapUp: enabled ? (_) => setState(() => _pressed = false) : null,
@@ -803,7 +1013,8 @@ class _TextInputPanelState extends State<_TextInputPanel> {
       children: [
         const Text(
           '输入文本后点击发送，内容将注入设备当前焦点输入框',
-          style: TextStyle(fontSize: 10, color: AppColors.textFaint, height: 1.5),
+          style:
+              TextStyle(fontSize: 10, color: AppColors.textFaint, height: 1.5),
         ),
         const SizedBox(height: 8),
         Container(
@@ -841,8 +1052,10 @@ class _TextInputPanelState extends State<_TextInputPanel> {
             onPressed: canSend && !_busy ? _send : null,
             icon: _busy
                 ? const SizedBox(
-                    width: 12, height: 12,
-                    child: CircularProgressIndicator(strokeWidth: 1.5, color: Colors.white),
+                    width: 12,
+                    height: 12,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 1.5, color: Colors.white),
                   )
                 : const Icon(Icons.send, size: 14),
             label: Text(_busy ? '发送中…' : '发送'),

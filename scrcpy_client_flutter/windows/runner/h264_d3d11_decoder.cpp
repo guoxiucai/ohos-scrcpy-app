@@ -57,14 +57,14 @@ bool H264D3D11Decoder::Init(const EncodableMap& args, std::string* err) {
   return true;
 }
 
-void H264D3D11Decoder::Feed(std::vector<uint8_t> data, bool keyframe, int64_t pts_ms) {
+void H264D3D11Decoder::Feed(std::vector<uint8_t> data, bool keyframe, int64_t pts_us) {
   {
     std::lock_guard<std::mutex> lk(mu_);
     while (queue_.size() >= 5) {
       if (!queue_.front().keyframe) queue_.pop_front();
       else break;
     }
-    queue_.push_back({std::move(data), keyframe, pts_ms});
+    queue_.push_back({std::move(data), keyframe, pts_us});
   }
   cv_.notify_one();
 }
@@ -297,6 +297,54 @@ const FlutterDesktopGpuSurfaceDescriptor* H264D3D11Decoder::ObtainDescriptor(
   return &descriptor_;
 }
 
+bool H264D3D11Decoder::CopyLatestBgra(std::vector<uint8_t>* bgra,
+                                      int* width,
+                                      int* height,
+                                      std::string* error) {
+  std::lock_guard<std::mutex> frame_lock(frame_mu_);
+  if (!output_tex_ || out_width_ == 0 || out_height_ == 0) {
+    *error = "当前没有可截图的 D3D11 解码帧";
+    return false;
+  }
+  D3D11_TEXTURE2D_DESC description{};
+  output_tex_->GetDesc(&description);
+  description.Usage = D3D11_USAGE_STAGING;
+  description.BindFlags = 0;
+  description.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  description.MiscFlags = 0;
+  ComPtr<ID3D11Texture2D> staging;
+  HRESULT hr = d3d_device_->CreateTexture2D(
+      &description, nullptr, &staging);
+  if (FAILED(hr)) {
+    *error = "创建截图 staging texture 失败";
+    return false;
+  }
+  d3d_context_->CopyResource(staging.Get(), output_tex_.Get());
+  D3D11_MAPPED_SUBRESOURCE mapped{};
+  hr = d3d_context_->Map(
+      staging.Get(), 0, D3D11_MAP_READ, 0, &mapped);
+  if (FAILED(hr)) {
+    *error = "读取 D3D11 解码帧失败";
+    return false;
+  }
+  const size_t row_bytes = static_cast<size_t>(out_width_) * 4;
+  bgra->resize(row_bytes * out_height_);
+  for (UINT row = 0; row < out_height_; ++row) {
+    memcpy(
+        bgra->data() + row * row_bytes,
+        static_cast<const uint8_t*>(mapped.pData) + row * mapped.RowPitch,
+        row_bytes);
+  }
+  d3d_context_->Unmap(staging.Get(), 0);
+  // VideoProcessor 的 alpha 输出在不同驱动上不完全一致；屏幕截图固定为不透明。
+  for (size_t offset = 3; offset < bgra->size(); offset += 4) {
+    (*bgra)[offset] = 255;
+  }
+  *width = static_cast<int>(out_width_);
+  *height = static_cast<int>(out_height_);
+  return true;
+}
+
 void H264D3D11Decoder::WorkerLoop() {
   CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 
@@ -334,7 +382,7 @@ void H264D3D11Decoder::WorkerLoop() {
     ComPtr<IMFSample> sample;
     MFCreateSample(&sample);
     sample->AddBuffer(buf.Get());
-    sample->SetSampleTime(task.pts_ms * 10000LL);
+    sample->SetSampleTime(task.pts_us * 10LL);
 
     HRESULT hr = mft_->ProcessInput(0, sample.Get(), 0);
     if (FAILED(hr)) {
@@ -413,7 +461,8 @@ void H264D3D11Decoder::WorkerLoop() {
         MFGetAttributeSize(cur_out.Get(), MF_MT_FRAME_SIZE, &actual_w, &actual_h);
       }
 
-      // 确保输出纹理和 VideoProcessor 就绪
+      // 确保输出纹理和 VideoProcessor 就绪。截图读回与纹理替换/写入互斥。
+      std::lock_guard<std::mutex> frame_lock(frame_mu_);
       if (!EnsureOutputTexture(actual_w, actual_h)) {
         result_sample->Release();
         break;

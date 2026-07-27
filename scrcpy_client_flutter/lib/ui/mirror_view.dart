@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -41,7 +40,8 @@ class _MirrorViewState extends State<MirrorView> {
   void _onStateChanged() {
     final current = widget.state.connState;
     // 仅在从非连接状态变为已连接时请求焦点，避免每次 notifyListeners 都抢走焦点
-    if (_prevConnState != ConnState.connected && current == ConnState.connected) {
+    if (_prevConnState != ConnState.connected &&
+        current == ConnState.connected) {
       _focusNode.requestFocus();
     }
     _prevConnState = current;
@@ -103,8 +103,12 @@ class _MirrorViewState extends State<MirrorView> {
     if (key == LogicalKeyboardKey.numpad8) return OhKeyCode.numpad8;
     if (key == LogicalKeyboardKey.numpad9) return OhKeyCode.numpad9;
     if (key == LogicalKeyboardKey.numpadAdd) return OhKeyCode.numpadAdd;
-    if (key == LogicalKeyboardKey.numpadSubtract) return OhKeyCode.numpadSubtract;
-    if (key == LogicalKeyboardKey.numpadMultiply) return OhKeyCode.numpadMultiply;
+    if (key == LogicalKeyboardKey.numpadSubtract) {
+      return OhKeyCode.numpadSubtract;
+    }
+    if (key == LogicalKeyboardKey.numpadMultiply) {
+      return OhKeyCode.numpadMultiply;
+    }
     if (key == LogicalKeyboardKey.numpadDivide) return OhKeyCode.numpadDivide;
     if (key == LogicalKeyboardKey.numpadDecimal) return OhKeyCode.numpadDot;
     if (key == LogicalKeyboardKey.numpadComma) return OhKeyCode.numpadComma;
@@ -143,20 +147,26 @@ class _MirrorViewState extends State<MirrorView> {
       encodeKeyEvent(isDown, ohKey),
     );
     return KeyEventResult.handled;
-  }  // pointer -> button type (0=touch, 2=right, 1=middle)
+  } // pointer -> button type (0=touch, 2=right, 1=middle)
 
-  Uint8List _touchPayload(Offset local, Size renderSize, int devW, int devH, int pointerId) {
-    final x = (local.dx / renderSize.width  * devW).clamp(0.0, devW.toDouble() - 1);
-    final y = (local.dy / renderSize.height * devH).clamp(0.0, devH.toDouble() - 1);
+  Uint8List _touchPayload(
+      Offset local, Size renderSize, int devW, int devH, int pointerId) {
+    final x =
+        (local.dx / renderSize.width * devW).clamp(0.0, devW.toDouble() - 1);
+    final y =
+        (local.dy / renderSize.height * devH).clamp(0.0, devH.toDouble() - 1);
     widget.state.lastTouchX = x.toInt();
     widget.state.lastTouchY = y.toInt();
     return encodeTouch(x, y, pointerId);
   }
 
-  Uint8List _mousePayload(Offset local, Size renderSize, int devW, int devH,
-      int action, int button, {double axisValue = 0}) {
-    final x = (local.dx / renderSize.width  * devW).clamp(0.0, devW.toDouble() - 1);
-    final y = (local.dy / renderSize.height * devH).clamp(0.0, devH.toDouble() - 1);
+  Uint8List _mousePayload(
+      Offset local, Size renderSize, int devW, int devH, int action, int button,
+      {double axisValue = 0}) {
+    final x =
+        (local.dx / renderSize.width * devW).clamp(0.0, devW.toDouble() - 1);
+    final y =
+        (local.dy / renderSize.height * devH).clamp(0.0, devH.toDouble() - 1);
     return encodeMouseEvent(action, button, x, y, axisValue);
   }
 
@@ -183,8 +193,12 @@ class _MirrorViewState extends State<MirrorView> {
           if (size.isEmpty) return;
           final devW = cfg.width;
           final devH = cfg.height;
-          final devX = (e.localPosition.dx / size.width * devW).clamp(0.0, devW.toDouble() - 1).toInt();
-          final devY = (e.localPosition.dy / size.height * devH).clamp(0.0, devH.toDouble() - 1).toInt();
+          final devX = (e.localPosition.dx / size.width * devW)
+              .clamp(0.0, devW.toDouble() - 1)
+              .toInt();
+          final devY = (e.localPosition.dy / size.height * devH)
+              .clamp(0.0, devH.toDouble() - 1)
+              .toInt();
           widget.state.scrollAtPosition(devX, devY, e.scrollDelta.dy);
         }
       },
@@ -201,47 +215,51 @@ class _MirrorViewState extends State<MirrorView> {
         if (size.isEmpty) return;
         final devW = cfg.width;
         final devH = cfg.height;
-        final devX = (e.localPosition.dx / size.width * devW).clamp(0.0, devW.toDouble() - 1).toInt();
-        final devY = (e.localPosition.dy / size.height * devH).clamp(0.0, devH.toDouble() - 1).toInt();
+        final devX = (e.localPosition.dx / size.width * devW)
+            .clamp(0.0, devW.toDouble() - 1)
+            .toInt();
+        final devY = (e.localPosition.dy / size.height * devH)
+            .clamp(0.0, devH.toDouble() - 1)
+            .toInt();
         // panDelta.dy 正值=手指向下滑=内容向上滚，与 scrollDelta 方向一致
         widget.state.scrollAtPosition(devX, devY, e.panDelta.dy);
       },
       child: Focus(
-      focusNode: _focusNode,
-      autofocus: true,
-      onKeyEvent: _onKeyEvent,
-      child: Container(
+        focusNode: _focusNode,
+        autofocus: true,
+        onKeyEvent: _onKeyEvent,
+        child: Container(
           color: AppColors.bg,
           child: Column(
-        children: [
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.black,
-                border: Border.all(color: AppColors.borderStrong),
-                borderRadius: BorderRadius.circular(AppRadius.md),
-                gradient: const RadialGradient(
-                  center: Alignment.center,
-                  radius: 1.0,
-                  colors: [Color(0xFF0F172A), Colors.black],
+            children: [
+              Expanded(
+                child: Container(
+                  margin: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.black,
+                    border: Border.all(color: AppColors.borderStrong),
+                    borderRadius: BorderRadius.circular(AppRadius.md),
+                    gradient: const RadialGradient(
+                      center: Alignment.center,
+                      radius: 1.0,
+                      colors: [Color(0xFF0F172A), Colors.black],
+                    ),
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Center(
+                    child: !connected
+                        ? const EmptyState(message: '请选择设备并点击「连接」')
+                        : (cfg == null
+                            ? const _Waiting(message: '等待视频流…')
+                            : _buildMirror(cfg, id)),
+                  ),
                 ),
               ),
-              clipBehavior: Clip.antiAlias,
-              child: Center(
-                child: !connected
-                    ? const EmptyState(message: '请选择设备并点击「连接」')
-                    : (cfg == null
-                        ? const _Waiting(message: '等待视频流…')
-                        : _buildMirror(cfg, id)),
-              ),
-            ),
+              _StatusBar(state: state),
+            ],
           ),
-          _StatusBar(state: state),
-        ],
+        ),
       ),
-    ),
-    ),
     );
   }
 
@@ -270,20 +288,21 @@ class _MirrorViewState extends State<MirrorView> {
           if (e.buttons & kSecondaryButton != 0) {
             _pointerButtonMap[e.pointer] = MouseButton.right;
             widget.state.sendControl(
-              ControlSubType.mouseEvent,
-              _mousePayload(e.localPosition, size, cfg.width, cfg.height,
-                  MouseAction.buttonDown, MouseButton.right));
+                ControlSubType.mouseEvent,
+                _mousePayload(e.localPosition, size, cfg.width, cfg.height,
+                    MouseAction.buttonDown, MouseButton.right));
           } else if (e.buttons & kTertiaryButton != 0) {
             _pointerButtonMap[e.pointer] = MouseButton.middle;
             widget.state.sendControl(
-              ControlSubType.mouseEvent,
-              _mousePayload(e.localPosition, size, cfg.width, cfg.height,
-                  MouseAction.buttonDown, MouseButton.middle));
+                ControlSubType.mouseEvent,
+                _mousePayload(e.localPosition, size, cfg.width, cfg.height,
+                    MouseAction.buttonDown, MouseButton.middle));
           } else {
             _pointerButtonMap[e.pointer] = -1;
             widget.state.sendControl(
-              ControlSubType.touchDown,
-              _touchPayload(e.localPosition, size, cfg.width, cfg.height, e.pointer & 0xFFFF));
+                ControlSubType.touchDown,
+                _touchPayload(e.localPosition, size, cfg.width, cfg.height,
+                    e.pointer & 0xFFFF));
           }
         },
         onPointerMove: (e) {
@@ -292,8 +311,9 @@ class _MirrorViewState extends State<MirrorView> {
           final btn = _pointerButtonMap[e.pointer] ?? -1;
           if (btn >= 0) return;
           widget.state.sendControl(
-            ControlSubType.touchMove,
-            _touchPayload(e.localPosition, size, cfg.width, cfg.height, e.pointer & 0xFFFF));
+              ControlSubType.touchMove,
+              _touchPayload(e.localPosition, size, cfg.width, cfg.height,
+                  e.pointer & 0xFFFF));
         },
         onPointerUp: (e) {
           final size = _renderedSize();
@@ -301,21 +321,23 @@ class _MirrorViewState extends State<MirrorView> {
           final btn = _pointerButtonMap.remove(e.pointer) ?? -1;
           if (btn >= 0) {
             widget.state.sendControl(
-              ControlSubType.mouseEvent,
-              _mousePayload(e.localPosition, size, cfg.width, cfg.height,
-                  MouseAction.buttonUp, btn));
+                ControlSubType.mouseEvent,
+                _mousePayload(e.localPosition, size, cfg.width, cfg.height,
+                    MouseAction.buttonUp, btn));
           } else {
             widget.state.sendControl(
-              ControlSubType.touchUp,
-              _touchPayload(e.localPosition, size, cfg.width, cfg.height, e.pointer & 0xFFFF));
+                ControlSubType.touchUp,
+                _touchPayload(e.localPosition, size, cfg.width, cfg.height,
+                    e.pointer & 0xFFFF));
           }
         },
         onPointerCancel: (e) {
           final size = _renderedSize();
           if (size.isEmpty) return;
           widget.state.sendControl(
-            ControlSubType.touchUp,
-            _touchPayload(e.localPosition, size, cfg.width, cfg.height, e.pointer & 0xFFFF));
+              ControlSubType.touchUp,
+              _touchPayload(e.localPosition, size, cfg.width, cfg.height,
+                  e.pointer & 0xFFFF));
         },
         child: child,
       ),
@@ -332,8 +354,10 @@ class _Waiting extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         const SizedBox(
-          width: 32, height: 32,
-          child: CircularProgressIndicator(strokeWidth: 2.0, color: AppColors.accent),
+          width: 32,
+          height: 32,
+          child: CircularProgressIndicator(
+              strokeWidth: 2.0, color: AppColors.accent),
         ),
         const SizedBox(height: 14),
         Text(
@@ -373,9 +397,8 @@ class _StatusBar extends StatelessWidget {
         : canControl
             ? '${state.targetFps}fps'
             : '${cfg.fps}fps';
-    final liveFps = isConnected && cfg != null
-        ? '${state.fps.toStringAsFixed(0)}fps'
-        : '—';
+    final liveFps =
+        isConnected && cfg != null ? '${state.fps.toStringAsFixed(0)}fps' : '—';
     final codecLabel = cfg == null
         ? '—'
         : (cfg.codec == VideoCodec.rawRgba
@@ -424,7 +447,14 @@ class _StatusBar extends StatelessWidget {
       offset: const Offset(0, -80),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
-      onSelected: (v) => state.changeVideoParams(maxShort: v),
+      onSelected: (v) {
+        final result = state.changeVideoParams(maxShort: v);
+        if (!result.ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result.message)),
+          );
+        }
+      },
       itemBuilder: (_) => [
         _menuItem(1080, '1080p  (最短边≤1080)', current),
         _menuItem(2160, '2160p  (最短边≤2160)', current),
@@ -442,14 +472,21 @@ class _StatusBar extends StatelessWidget {
       offset: const Offset(0, -100),
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints(),
-      onSelected: (v) => state.changeVideoParams(fps: v),
+      onSelected: (v) {
+        final result = state.changeVideoParams(fps: v);
+        if (!result.ok) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(result.message)),
+          );
+        }
+      },
       itemBuilder: (_) => [
         _menuItem(20, '20 fps', current),
         _menuItem(15, '15 fps', current),
         _menuItem(8, '8 fps', current),
       ],
-      child: _stat(Icons.speed, label,
-          color: AppColors.accent, underline: true),
+      child:
+          _stat(Icons.speed, label, color: AppColors.accent, underline: true),
     );
   }
 
@@ -500,7 +537,8 @@ class _Sep extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 1, height: 12,
+      width: 1,
+      height: 12,
       margin: const EdgeInsets.symmetric(horizontal: 12),
       color: AppColors.border,
     );

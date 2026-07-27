@@ -1,9 +1,11 @@
 import Cocoa
+import AVFoundation
 import FlutterMacOS
 import VideoToolbox
 import CoreVideo
 import CoreGraphics
 import ImageIO
+import CoreServices
 
 /// MethodChannel "scrcpy/decoder"
 /// - codec=0: H264 Annex-B → VTDecompressionSession → CVPixelBuffer
@@ -11,6 +13,16 @@ import ImageIO
 /// - codec=2: JPEG → CGImageSource 解码 → CVPixelBuffer 上屏
 class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
   private let registrar: FlutterPluginRegistrar
+  private var channel: FlutterMethodChannel?
+  private lazy var recorder = H264Mp4Recorder { [weak self] state, error in
+    DispatchQueue.main.async {
+      var arguments: [String: Any] = ["state": state]
+      if let message = error {
+        arguments["error"] = message
+      }
+      self?.channel?.invokeMethod("recordingState", arguments: arguments)
+    }
+  }
   private var textureId: Int64 = -1
   private var session: VTDecompressionSession?
   private var formatDesc: CMVideoFormatDescription?
@@ -30,6 +42,7 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
     let plugin = VideoDecoderPlugin(registrar: registrar)
     let channel = FlutterMethodChannel(name: "scrcpy/decoder",
                                         binaryMessenger: registrar.messenger)
+    plugin.channel = channel
     registrar.addMethodCallDelegate(plugin, channel: channel)
   }
 
@@ -76,6 +89,9 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
             let nal = (args["nal"] as? FlutterStandardTypedData)?.data else {
         result(nil); return
       }
+      let keyframe = (args["keyframe"] as? Bool) ?? false
+      let ptsUs = (args["pts"] as? Int64) ?? Int64((args["pts"] as? Int) ?? 0)
+      recorder.feed(annexB: Data(nal), keyframe: keyframe, ptsUs: ptsUs)
       if codec == 0 {
         decode(annexB: [UInt8](nal))
       } else if codec == 1 {
@@ -84,7 +100,41 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
         feedJpeg(nal)
       }
       result(nil)
+    case "startRecording":
+      guard let args = call.arguments as? [String: Any] else {
+        result(mediaResult(ok: false, error: "缺少录制参数")); return
+      }
+      let width = (args["width"] as? Int) ?? 0
+      let height = (args["height"] as? Int) ?? 0
+      let fps = (args["fps"] as? Int) ?? 0
+      let sps = (args["sps"] as? FlutterStandardTypedData)?.data ?? Data()
+      let pps = (args["pps"] as? FlutterStandardTypedData)?.data ?? Data()
+      do {
+        try recorder.start(width: width, height: height, fps: fps, sps: sps, pps: pps)
+        result(mediaResult(ok: true))
+      } catch {
+        result(mediaResult(ok: false, error: error.localizedDescription))
+      }
+    case "stopRecording":
+      recorder.stop { response in
+        DispatchQueue.main.async { result(response) }
+      }
+    case "cancelRecording":
+      recorder.cancel()
+      result(mediaResult(ok: true))
+    case "capturePng":
+      capturePng { response in
+        DispatchQueue.main.async { result(response) }
+      }
+    case "revealInFileManager":
+      guard let args = call.arguments as? [String: Any],
+            let path = args["path"] as? String, !path.isEmpty else {
+        result(mediaResult(ok: false, error: "保存路径为空")); return
+      }
+      NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: path)])
+      result(mediaResult(ok: true, path: path))
     case "dispose":
+      recorder.cancel()
       teardown()
       if textureId >= 0 {
         registrar.textures.unregisterTexture(textureId)
@@ -93,6 +143,45 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       result(nil)
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func capturePng(completion: @escaping ([String: Any]) -> Void) {
+    lock.lock()
+    let pixelBuffer = latestPixelBuffer
+    lock.unlock()
+    guard let buffer = pixelBuffer else {
+      completion(mediaResult(ok: false, error: "当前没有可截图的解码帧"))
+      return
+    }
+    DispatchQueue.global(qos: .userInitiated).async {
+      var image: CGImage?
+      let status = VTCreateCGImageFromCVPixelBuffer(buffer, options: nil, imageOut: &image)
+      guard status == noErr, let cgImage = image else {
+        completion(mediaResult(ok: false, error: "无法读取当前解码帧"))
+        return
+      }
+      do {
+        let finalUrl = try MediaFilePath.desktopUrl(prefix: "HongJing_Screenshot", ext: "png")
+        let tempUrl = FileManager.default.temporaryDirectory
+          .appendingPathComponent(UUID().uuidString)
+          .appendingPathExtension("png")
+        guard let destination = CGImageDestinationCreateWithURL(
+          tempUrl as CFURL, kUTTypePNG, 1, nil) else {
+          completion(mediaResult(ok: false, error: "无法创建 PNG 编码器"))
+          return
+        }
+        CGImageDestinationAddImage(destination, cgImage, nil)
+        guard CGImageDestinationFinalize(destination) else {
+          try? FileManager.default.removeItem(at: tempUrl)
+          completion(mediaResult(ok: false, error: "PNG 编码失败"))
+          return
+        }
+        try FileManager.default.moveItem(at: tempUrl, to: finalUrl)
+        completion(mediaResult(ok: true, path: finalUrl.path))
+      } catch {
+        completion(mediaResult(ok: false, error: error.localizedDescription))
+      }
     }
   }
 
@@ -379,5 +468,378 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
     defer { lock.unlock() }
     guard let buf = latestPixelBuffer else { return nil }
     return Unmanaged.passRetained(buf)
+  }
+}
+
+private func mediaResult(
+  ok: Bool,
+  path: String? = nil,
+  error: String? = nil,
+  durationUs: Int64 = 0,
+  frameCount: Int = 0
+) -> [String: Any] {
+  var result: [String: Any] = [
+    "ok": ok,
+    "durationUs": durationUs,
+    "frameCount": frameCount,
+  ]
+  if let path = path { result["path"] = path }
+  if let error = error { result["error"] = error }
+  return result
+}
+
+private enum MediaFilePath {
+  static func desktopUrl(prefix: String, ext: String) throws -> URL {
+    guard let desktop = FileManager.default.urls(
+      for: .desktopDirectory, in: .userDomainMask).first else {
+      throw NSError(
+        domain: "HongJingMedia",
+        code: 1,
+        userInfo: [NSLocalizedDescriptionKey: "无法定位系统桌面目录"])
+    }
+    let formatter = DateFormatter()
+    formatter.locale = Locale(identifier: "en_US_POSIX")
+    formatter.dateFormat = "yyyyMMdd_HHmmss"
+    let stem = "\(prefix)_\(formatter.string(from: Date()))"
+    var candidate = desktop.appendingPathComponent(stem).appendingPathExtension(ext)
+    var suffix = 1
+    while FileManager.default.fileExists(atPath: candidate.path) {
+      candidate = desktop.appendingPathComponent("\(stem)_\(suffix)")
+        .appendingPathExtension(ext)
+      suffix += 1
+    }
+    return candidate
+  }
+}
+
+private struct PendingRecordFrame {
+  let avcc: Data
+  let ptsUs: Int64
+  let keyframe: Bool
+}
+
+/// 将收到的 H.264 压缩访问单元直通封装为 MP4，不进行二次编码。
+private final class H264Mp4Recorder {
+  typealias StateCallback = (String, String?) -> Void
+
+  private let queue = DispatchQueue(label: "com.hongjing.mp4-recorder")
+  private let stateCallback: StateCallback
+  private var writer: AVAssetWriter?
+  private var input: AVAssetWriterInput?
+  private var tempUrl: URL?
+  private var finalUrl: URL?
+  private var active = false
+  private var writing = false
+  private var firstPtsUs: Int64 = 0
+  private var lastSourcePtsUs: Int64 = -1
+  private var pending: PendingRecordFrame?
+  private var frameCount = 0
+  private var nominalFrameUs: Int64 = 66_667
+
+  init(stateCallback: @escaping StateCallback) {
+    self.stateCallback = stateCallback
+  }
+
+  func start(width: Int, height: Int, fps: Int, sps: Data, pps: Data) throws {
+    var startError: Error?
+    queue.sync {
+      do {
+        guard !active else {
+          throw NSError(
+            domain: "HongJingMedia",
+            code: 2,
+            userInfo: [NSLocalizedDescriptionKey: "已有录制任务正在进行"])
+        }
+        guard width > 0, height > 0, fps > 0, !sps.isEmpty, !pps.isEmpty else {
+          throw NSError(
+            domain: "HongJingMedia",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: "H.264 录制参数不完整"])
+        }
+        let format = try Self.createFormatDescription(sps: sps, pps: pps)
+        let destination = try MediaFilePath.desktopUrl(
+          prefix: "HongJing_Recording", ext: "mp4")
+        let temporary = FileManager.default.temporaryDirectory
+          .appendingPathComponent(UUID().uuidString)
+          .appendingPathExtension("mp4")
+        let assetWriter = try AVAssetWriter(outputURL: temporary, fileType: .mp4)
+        let assetInput = AVAssetWriterInput(
+          mediaType: .video,
+          outputSettings: nil,
+          sourceFormatHint: format)
+        assetInput.expectsMediaDataInRealTime = true
+        guard assetWriter.canAdd(assetInput) else {
+          throw NSError(
+            domain: "HongJingMedia",
+            code: 4,
+            userInfo: [NSLocalizedDescriptionKey: "系统不支持 H.264 直通封装"])
+        }
+        assetWriter.add(assetInput)
+        writer = assetWriter
+        input = assetInput
+        tempUrl = temporary
+        finalUrl = destination
+        active = true
+        writing = false
+        pending = nil
+        frameCount = 0
+        firstPtsUs = 0
+        lastSourcePtsUs = -1
+        nominalFrameUs = max(1, 1_000_000 / Int64(fps))
+      } catch {
+        startError = error
+        reset(removeTemporary: true)
+      }
+    }
+    if let error = startError { throw error }
+  }
+
+  func feed(annexB: Data, keyframe: Bool, ptsUs: Int64) {
+    guard !annexB.isEmpty else { return }
+    queue.async { [weak self] in
+      self?.process(annexB: annexB, keyframe: keyframe, ptsUs: ptsUs)
+    }
+  }
+
+  func stop(completion: @escaping ([String: Any]) -> Void) {
+    queue.async { [weak self] in
+      guard let self = self, self.active else {
+        completion(mediaResult(ok: false, error: "当前没有录制任务"))
+        return
+      }
+      guard self.writing, let writer = self.writer, let input = self.input,
+            let temporary = self.tempUrl, let destination = self.finalUrl else {
+        self.reset(removeTemporary: true)
+        completion(mediaResult(ok: false, error: "尚未收到有效关键帧"))
+        return
+      }
+      if let frame = self.pending {
+        guard self.append(frame, durationUs: self.nominalFrameUs) else {
+          let message = writer.error?.localizedDescription ?? "写入 MP4 失败"
+          self.reset(removeTemporary: true)
+          completion(mediaResult(ok: false, error: message))
+          return
+        }
+        self.pending = nil
+      }
+      let duration = max(0, self.lastSourcePtsUs - self.firstPtsUs + self.nominalFrameUs)
+      let frames = self.frameCount
+      input.markAsFinished()
+      writer.finishWriting {
+        self.queue.async {
+          if writer.status == .completed {
+            do {
+              try FileManager.default.moveItem(at: temporary, to: destination)
+              self.reset(removeTemporary: false)
+              completion(mediaResult(
+                ok: true,
+                path: destination.path,
+                durationUs: duration,
+                frameCount: frames))
+            } catch {
+              self.reset(removeTemporary: true)
+              completion(mediaResult(ok: false, error: error.localizedDescription))
+            }
+          } else {
+            let message = writer.error?.localizedDescription ?? "MP4 文件收尾失败"
+            self.reset(removeTemporary: true)
+            completion(mediaResult(ok: false, error: message))
+          }
+        }
+      }
+    }
+  }
+
+  func cancel() {
+    queue.async { [weak self] in
+      guard let self = self else { return }
+      self.writer?.cancelWriting()
+      self.reset(removeTemporary: true)
+    }
+  }
+
+  private func process(annexB: Data, keyframe: Bool, ptsUs: Int64) {
+    guard active else { return }
+    let converted = Self.annexBToAvcc(annexB)
+    guard !converted.data.isEmpty else { return }
+    if !writing {
+      guard keyframe && converted.containsIdr else { return }
+      guard let writer = writer, writer.startWriting() else {
+        fail(writer?.error?.localizedDescription ?? "无法启动 MP4 写入")
+        return
+      }
+      firstPtsUs = ptsUs
+      lastSourcePtsUs = ptsUs
+      writer.startSession(atSourceTime: .zero)
+      writing = true
+      stateCallback("recording", nil)
+    } else if ptsUs < lastSourcePtsUs {
+      fail("视频时间戳发生回退，录制已终止")
+      return
+    }
+
+    if let previous = pending {
+      let duration = max(1, ptsUs - previous.ptsUs)
+      guard append(previous, durationUs: duration) else {
+        fail(writer?.error?.localizedDescription ?? "写入 MP4 样本失败")
+        return
+      }
+    }
+    pending = PendingRecordFrame(
+      avcc: converted.data,
+      ptsUs: ptsUs,
+      keyframe: keyframe && converted.containsIdr)
+    lastSourcePtsUs = ptsUs
+  }
+
+  private func append(_ frame: PendingRecordFrame, durationUs: Int64) -> Bool {
+    guard let input = input, input.isReadyForMoreMediaData else { return false }
+    var blockBuffer: CMBlockBuffer?
+    let createStatus = CMBlockBufferCreateWithMemoryBlock(
+      allocator: kCFAllocatorDefault,
+      memoryBlock: nil,
+      blockLength: frame.avcc.count,
+      blockAllocator: kCFAllocatorDefault,
+      customBlockSource: nil,
+      offsetToData: 0,
+      dataLength: frame.avcc.count,
+      flags: 0,
+      blockBufferOut: &blockBuffer)
+    guard createStatus == kCMBlockBufferNoErr, let buffer = blockBuffer else {
+      return false
+    }
+    let copyStatus = frame.avcc.withUnsafeBytes { raw in
+      CMBlockBufferReplaceDataBytes(
+        with: raw.baseAddress!,
+        blockBuffer: buffer,
+        offsetIntoDestination: 0,
+        dataLength: frame.avcc.count)
+    }
+    guard copyStatus == kCMBlockBufferNoErr else { return false }
+
+    let relativePts = max(0, frame.ptsUs - firstPtsUs)
+    var timing = CMSampleTimingInfo(
+      duration: CMTime(value: durationUs, timescale: 1_000_000),
+      presentationTimeStamp: CMTime(value: relativePts, timescale: 1_000_000),
+      decodeTimeStamp: .invalid)
+    var sampleSize = frame.avcc.count
+    var sampleBuffer: CMSampleBuffer?
+    let sampleStatus = CMSampleBufferCreate(
+      allocator: kCFAllocatorDefault,
+      dataBuffer: buffer,
+      dataReady: true,
+      makeDataReadyCallback: nil,
+      refcon: nil,
+      formatDescription: input.sourceFormatHint,
+      sampleCount: 1,
+      sampleTimingEntryCount: 1,
+      sampleTimingArray: &timing,
+      sampleSizeEntryCount: 1,
+      sampleSizeArray: &sampleSize,
+      sampleBufferOut: &sampleBuffer)
+    guard sampleStatus == noErr, let sample = sampleBuffer else { return false }
+    if !frame.keyframe {
+      CMSetAttachment(
+        sample,
+        key: kCMSampleAttachmentKey_NotSync,
+        value: kCFBooleanTrue,
+        attachmentMode: kCMAttachmentMode_ShouldPropagate)
+    }
+    guard input.append(sample) else { return false }
+    frameCount += 1
+    return true
+  }
+
+  private func fail(_ message: String) {
+    writer?.cancelWriting()
+    reset(removeTemporary: true)
+    stateCallback("error", message)
+  }
+
+  private func reset(removeTemporary: Bool) {
+    if removeTemporary, let temporary = tempUrl {
+      try? FileManager.default.removeItem(at: temporary)
+    }
+    writer = nil
+    input = nil
+    tempUrl = nil
+    finalUrl = nil
+    active = false
+    writing = false
+    pending = nil
+    frameCount = 0
+    firstPtsUs = 0
+    lastSourcePtsUs = -1
+  }
+
+  private static func createFormatDescription(sps: Data, pps: Data) throws
+    -> CMFormatDescription {
+    var format: CMFormatDescription?
+    let status: OSStatus = sps.withUnsafeBytes { spsBytes in
+      pps.withUnsafeBytes { ppsBytes in
+        let pointers: [UnsafePointer<UInt8>] = [
+          spsBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+          ppsBytes.baseAddress!.assumingMemoryBound(to: UInt8.self),
+        ]
+        let sizes = [sps.count, pps.count]
+        return CMVideoFormatDescriptionCreateFromH264ParameterSets(
+          allocator: kCFAllocatorDefault,
+          parameterSetCount: 2,
+          parameterSetPointers: pointers,
+          parameterSetSizes: sizes,
+          nalUnitHeaderLength: 4,
+          formatDescriptionOut: &format)
+      }
+    }
+    guard status == noErr, let description = format else {
+      throw NSError(
+        domain: "HongJingMedia",
+        code: Int(status),
+        userInfo: [NSLocalizedDescriptionKey: "无法创建 H.264 格式描述"])
+    }
+    return description
+  }
+
+  private static func annexBToAvcc(_ bytes: Data)
+    -> (data: Data, containsIdr: Bool) {
+    let source = [UInt8](bytes)
+    var output = Data()
+    var containsIdr = false
+    var index = 0
+    while index < source.count {
+      guard let start = findStartCode(source, from: index) else { break }
+      let nalStart = start.offset + start.length
+      let next = findStartCode(source, from: nalStart)
+      let nalEnd = next?.offset ?? source.count
+      if nalEnd > nalStart {
+        let type = source[nalStart] & 0x1F
+        if type == 5 { containsIdr = true }
+        if type != 7 && type != 8 {
+          let length = UInt32(nalEnd - nalStart).bigEndian
+          withUnsafeBytes(of: length) { output.append(contentsOf: $0) }
+          output.append(contentsOf: source[nalStart..<nalEnd])
+        }
+      }
+      index = nalEnd
+    }
+    return (output, containsIdr)
+  }
+
+  private static func findStartCode(_ bytes: [UInt8], from: Int)
+    -> (offset: Int, length: Int)? {
+    var index = from
+    while index + 2 < bytes.count {
+      if bytes[index] == 0 && bytes[index + 1] == 0 {
+        if bytes[index + 2] == 1 {
+          return (index, 3)
+        }
+        if index + 3 < bytes.count && bytes[index + 2] == 0 &&
+            bytes[index + 3] == 1 {
+          return (index, 4)
+        }
+      }
+      index += 1
+    }
+    return nil
   }
 }

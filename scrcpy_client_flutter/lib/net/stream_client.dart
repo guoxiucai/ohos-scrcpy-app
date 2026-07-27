@@ -16,7 +16,8 @@ class StreamClient {
   Future<void> connect(String host, int port) async {
     // 新连接前必须清掉上次残留的半包字节，否则首批字节会被错位解析。
     _parser.reset();
-    final s = await Socket.connect(host, port, timeout: const Duration(seconds: 5));
+    final s =
+        await Socket.connect(host, port, timeout: const Duration(seconds: 5));
     s.setOption(SocketOption.tcpNoDelay, true);
     _socket = s;
     s.listen(
@@ -26,7 +27,13 @@ class StreamClient {
         }
       },
       onError: (e, st) => _packetCtrl.addError(e, st),
-      onDone: () => disconnect(),
+      onDone: () {
+        final remotelyClosed = identical(_socket, s);
+        disconnect();
+        if (remotelyClosed) {
+          _packetCtrl.addError(const SocketException('设备视频连接已关闭'));
+        }
+      },
       cancelOnError: true,
     );
   }

@@ -12,7 +12,7 @@ bool JpegDecoder::Init(const EncodableMap& /*args*/, std::string* err) {
   return true;
 }
 
-void JpegDecoder::Feed(std::vector<uint8_t> data, bool /*keyframe*/, int64_t /*pts_ms*/) {
+void JpegDecoder::Feed(std::vector<uint8_t> data, bool /*keyframe*/, int64_t /*pts_us*/) {
   {
     std::lock_guard<std::mutex> lk(mu_);
     while (queue_.size() >= 4) queue_.pop_front();
@@ -70,7 +70,7 @@ void JpegDecoder::WorkerLoop() {
 
     Microsoft::WRL::ComPtr<IWICFormatConverter> converter;
     factory->CreateFormatConverter(&converter);
-    hr = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppBGRA,
+    hr = converter->Initialize(frame.Get(), GUID_WICPixelFormat32bppRGBA,
                                WICBitmapDitherTypeNone, nullptr, 0.0,
                                WICBitmapPaletteTypeMedianCut);
     if (FAILED(hr)) continue;

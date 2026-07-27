@@ -15,7 +15,7 @@ Set-Location (Join-Path $PSScriptRoot "..")
 $pubspec = Get-Content "pubspec.yaml" | Where-Object { $_ -match "^version:" }
 $AppVersion = ($pubspec -replace "^version:\s*", "") -replace "\+.*$", ""
 $AppVersion = $AppVersion.Trim()
-if (-not $AppVersion) { $AppVersion = "1.0.0" }
+if (-not $AppVersion) { $AppVersion = "1.0.2" }
 Write-Host "==> Version: $AppVersion"
 
 # [1/3] Flutter build

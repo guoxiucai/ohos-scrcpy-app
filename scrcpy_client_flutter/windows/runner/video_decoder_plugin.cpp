@@ -1,6 +1,5 @@
 #include "video_decoder_plugin.h"
 
-#include <objbase.h>
 #include <mfapi.h>
 
 #include <cassert>
@@ -16,15 +15,14 @@ using flutter::EncodableValue;
 
 // static
 void VideoDecoderPlugin::RegisterWith(flutter::PluginRegistrarWindows* registrar) {
-  CoInitializeEx(nullptr, COINIT_MULTITHREADED);
-  MFStartup(MF_VERSION, MFSTARTUP_FULL);
-
   auto plugin = std::make_unique<VideoDecoderPlugin>(registrar);
   registrar->AddPlugin(std::move(plugin));
 }
 
 VideoDecoderPlugin::VideoDecoderPlugin(flutter::PluginRegistrarWindows* registrar)
     : registrar_(registrar), texture_registrar_(registrar->texture_registrar()) {
+  media_foundation_started_ =
+      SUCCEEDED(MFStartup(MF_VERSION, MFSTARTUP_FULL));
   channel_ = std::make_unique<flutter::MethodChannel<EncodableValue>>(
       registrar->messenger(), "scrcpy/decoder",
       &flutter::StandardMethodCodec::GetInstance());
@@ -32,10 +30,25 @@ VideoDecoderPlugin::VideoDecoderPlugin(flutter::PluginRegistrarWindows* registra
       [this](const auto& call, auto result) {
         HandleMethodCall(call, std::move(result));
       });
+  recorder_ = std::make_unique<H264Mp4Recorder>(
+      [this](const std::string& state, const std::string& error) {
+        EncodableMap args;
+        args[EncodableValue("state")] = EncodableValue(state);
+        if (!error.empty()) {
+          args[EncodableValue("error")] = EncodableValue(error);
+        }
+        channel_->InvokeMethod(
+            "recordingState",
+            std::make_unique<EncodableValue>(args));
+      });
 }
 
 VideoDecoderPlugin::~VideoDecoderPlugin() {
+  recorder_->Cancel();
   CleanupDecoder();
+  if (media_foundation_started_) {
+    MFShutdown();
+  }
 }
 
 void VideoDecoderPlugin::CleanupDecoder() {
@@ -74,6 +87,10 @@ void VideoDecoderPlugin::HandleMethodCall(
     CleanupDecoder();
 
     if (codec == 0) {
+      if (!media_foundation_started_) {
+        result->Error("INIT", "Media Foundation 启动失败");
+        return;
+      }
       // H264：优先 D3D11 硬解，失败回落 CPU 软解
       auto d3d11 = std::make_unique<H264D3D11Decoder>();
       d3d11->SetTextureRegistrar(texture_registrar_);
@@ -109,6 +126,7 @@ void VideoDecoderPlugin::HandleMethodCall(
       cpu->SetFrameCallback([this](DecodedFrame frame) { OnFrame(std::move(frame)); });
       cpu->SetBackpressureCallback([this](bool paused) {
         auto args = flutter::EncodableMap{
+            {flutter::EncodableValue("source"), flutter::EncodableValue("decoder")},
             {flutter::EncodableValue("paused"), flutter::EncodableValue(paused)}
         };
         channel_->InvokeMethod("encoderState",
@@ -187,20 +205,64 @@ void VideoDecoderPlugin::HandleMethodCall(
       keyframe = std::get<bool>(it2->second);
     }
 
-    int64_t pts_ms = 0;
+    int64_t pts_us = 0;
     auto it3 = args.find(EncodableValue("pts"));
     if (it3 != args.end()) {
       if (std::holds_alternative<int64_t>(it3->second)) {
-        pts_ms = std::get<int64_t>(it3->second);
+        pts_us = std::get<int64_t>(it3->second);
       } else if (std::holds_alternative<int>(it3->second)) {
-        pts_ms = std::get<int>(it3->second);
+        pts_us = std::get<int>(it3->second);
       }
     }
 
     if (!nal.empty()) {
-      decoder_->Feed(std::move(nal), keyframe, pts_ms);
+      recorder_->Feed(nal, keyframe, pts_us);
+      decoder_->Feed(std::move(nal), keyframe, pts_us);
     }
     result->Success();
+
+  } else if (method == "startRecording") {
+    if (!call.arguments() ||
+        !std::holds_alternative<EncodableMap>(*call.arguments())) {
+      MediaOperationResult response;
+      response.error = "缺少录制参数";
+      result->Success(EncodeMediaResult(response));
+      return;
+    }
+    result->Success(EncodeMediaResult(
+        recorder_->Start(std::get<EncodableMap>(*call.arguments()))));
+
+  } else if (method == "stopRecording") {
+    result->Success(EncodeMediaResult(recorder_->Stop()));
+
+  } else if (method == "cancelRecording") {
+    recorder_->Cancel();
+    MediaOperationResult response;
+    response.ok = true;
+    result->Success(EncodeMediaResult(response));
+
+  } else if (method == "capturePng") {
+    result->Success(EncodeMediaResult(CapturePng()));
+
+  } else if (method == "revealInFileManager") {
+    if (!call.arguments() ||
+        !std::holds_alternative<EncodableMap>(*call.arguments())) {
+      MediaOperationResult response;
+      response.error = "保存路径为空";
+      result->Success(EncodeMediaResult(response));
+      return;
+    }
+    const auto& args = std::get<EncodableMap>(*call.arguments());
+    const auto path_it = args.find(EncodableValue("path"));
+    if (path_it == args.end() ||
+        !std::holds_alternative<std::string>(path_it->second)) {
+      MediaOperationResult response;
+      response.error = "保存路径为空";
+      result->Success(EncodeMediaResult(response));
+      return;
+    }
+    result->Success(EncodeMediaResult(
+        RevealInFileManager(std::get<std::string>(path_it->second))));
 
   } else if (method == "getTextureId") {
     // D3D11 路径：纹理 ID 在首帧解码后才确定
@@ -211,12 +273,40 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
 
   } else if (method == "dispose") {
+    recorder_->Cancel();
     CleanupDecoder();
     result->Success();
 
   } else {
     result->NotImplemented();
   }
+}
+
+MediaOperationResult VideoDecoderPlugin::CapturePng() {
+  if (d3d11_decoder_) {
+    std::vector<uint8_t> bgra;
+    int width = 0;
+    int height = 0;
+    std::string error;
+    if (!d3d11_decoder_->CopyLatestBgra(
+            &bgra, &width, &height, &error)) {
+      MediaOperationResult response;
+      response.error = error;
+      return response;
+    }
+    return SaveBgraFrameAsPng(bgra, width, height);
+  }
+
+  DecodedFrame frame;
+  {
+    std::lock_guard<std::mutex> lock(pending_mu_);
+    if (has_pending_) {
+      frame = pending_;
+    } else {
+      frame = display_;
+    }
+  }
+  return SaveRgbaFrameAsPng(frame.bgra, frame.w, frame.h);
 }
 
 void VideoDecoderPlugin::OnFrame(DecodedFrame frame) {

@@ -22,7 +22,7 @@ bool RawDecoder::Init(const EncodableMap& args, std::string* err) {
   return true;
 }
 
-void RawDecoder::Feed(std::vector<uint8_t> data, bool /*keyframe*/, int64_t /*pts_ms*/) {
+void RawDecoder::Feed(std::vector<uint8_t> data, bool /*keyframe*/, int64_t /*pts_us*/) {
   {
     std::lock_guard<std::mutex> lk(mu_);
     // 队列过长时丢弃旧帧
@@ -58,19 +58,7 @@ void RawDecoder::WorkerLoop() {
     DecodedFrame frame;
     frame.w = width_;
     frame.h = height_;
-    frame.bgra.resize(expected);
-
-    // RGBA → BGRA（R/B swap）
-    const uint8_t* src = task.data.data();
-    uint8_t* dst = frame.bgra.data();
-    for (int i = 0; i < width_ * height_; ++i) {
-      dst[0] = src[2];  // B
-      dst[1] = src[1];  // G
-      dst[2] = src[0];  // R
-      dst[3] = src[3];  // A
-      src += 4;
-      dst += 4;
-    }
+    frame.bgra.assign(task.data.begin(), task.data.begin() + expected);
 
     if (on_frame_) on_frame_(std::move(frame));
   }

@@ -6,7 +6,8 @@ import { rpc } from '@kit.IPCKit';
 import display from '@ohos.display';
 import deviceInfo from '@ohos.deviceInfo';
 import emitter from '@ohos.events.emitter';
-import { startServer, stopServer, startCapture, stopCapture, setEncoderPaused, broadcastDeviceStatus, CaptureConfig as NativeCaptureConfig } from 'libscrcpy_capture.so';
+import { startServer, stopServer, startCapture, stopCapture, setEncoderPaused, requestKeyFrame,
+  broadcastDeviceStatus, CaptureConfig as NativeCaptureConfig } from 'libscrcpy_capture.so';
 import { InputInjector } from './InputInjector';
 import { ControlSubType } from './Protocol';
 import { AppListProvider } from './AppListProvider';
@@ -98,6 +99,11 @@ export default class ScrcpyService extends ServiceExtensionAbility {
     }
     if (sub === ControlSubType.RESUME_ENCODER) {
       setEncoderPaused(false);
+      return;
+    }
+    if (sub === ControlSubType.REQUEST_KEYFRAME) {
+      const requested: boolean = requestKeyFrame();
+      hilog.info(DOMAIN, TAG, 'request keyframe result=%{public}d', requested ? 1 : 0);
       return;
     }
     if (sub === ControlSubType.CHANGE_VIDEO_PARAMS) {

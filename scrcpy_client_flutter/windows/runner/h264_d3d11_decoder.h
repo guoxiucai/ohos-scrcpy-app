@@ -27,12 +27,16 @@ class H264D3D11Decoder : public IDecoder {
   ~H264D3D11Decoder() override { Teardown(); }
 
   bool Init(const flutter::EncodableMap& args, std::string* err) override;
-  void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_ms) override;
+  void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_us) override;
   void Teardown() override;
 
   // 供 VideoDecoderPlugin 注册 GpuSurfaceTexture 后设置
   void SetTextureRegistrar(flutter::TextureRegistrar* registrar) { texture_registrar_ = registrar; }
   int64_t texture_id() const { return texture_id_; }
+  bool CopyLatestBgra(std::vector<uint8_t>* bgra,
+                      int* width,
+                      int* height,
+                      std::string* error);
 
   // GpuSurfaceTexture 回调：返回当前 DXGI shared handle
   const FlutterDesktopGpuSurfaceDescriptor* ObtainDescriptor(size_t w, size_t h);
@@ -72,6 +76,7 @@ class H264D3D11Decoder : public IDecoder {
   HANDLE shared_handle_ = nullptr;
   UINT out_width_ = 0;
   UINT out_height_ = 0;
+  std::mutex frame_mu_;
 
   // Flutter 纹理
   flutter::TextureRegistrar* texture_registrar_ = nullptr;
@@ -85,7 +90,7 @@ class H264D3D11Decoder : public IDecoder {
   struct Task {
     std::vector<uint8_t> data;
     bool keyframe = false;
-    int64_t pts_ms = 0;
+    int64_t pts_us = 0;
   };
 
   std::deque<Task> queue_;

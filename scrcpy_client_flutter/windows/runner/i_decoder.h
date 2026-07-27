@@ -22,7 +22,7 @@ class IDecoder {
   virtual bool Init(const flutter::EncodableMap& args, std::string* err) = 0;
 
   // 投递一帧原始数据；解码完成后异步回调 on_frame_。
-  virtual void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_ms) = 0;
+  virtual void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_us) = 0;
 
   // 销毁解码器（停止 worker 线程）。
   virtual void Teardown() = 0;

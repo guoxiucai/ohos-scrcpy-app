@@ -16,7 +16,7 @@ class JpegDecoder : public IDecoder {
   ~JpegDecoder() override { Teardown(); }
 
   bool Init(const flutter::EncodableMap& args, std::string* err) override;
-  void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_ms) override;
+  void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_us) override;
   void Teardown() override;
 
  private:

@@ -22,7 +22,7 @@ class H264Decoder : public IDecoder {
   ~H264Decoder() override { Teardown(); }
 
   bool Init(const flutter::EncodableMap& args, std::string* err) override;
-  void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_ms) override;
+  void Feed(std::vector<uint8_t> nal, bool keyframe, int64_t pts_us) override;
   void Teardown() override;
 
   // 队列达到高水位时回调 true（建议暂停编码），低水位时回调 false（恢复编码）。
@@ -52,7 +52,7 @@ class H264Decoder : public IDecoder {
   struct Task {
     std::vector<uint8_t> data;
     bool keyframe = false;
-    int64_t pts_ms = 0;
+    int64_t pts_us = 0;
   };
 
   std::deque<Task> queue_;

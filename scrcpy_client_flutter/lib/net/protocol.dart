@@ -25,9 +25,10 @@ class ControlSubType {
   static const int brightnessUp = 0x22;
   static const int brightnessDown = 0x23;
   static const int listApps = 0x30;
-  static const int pauseEncoder  = 0x40;
+  static const int pauseEncoder = 0x40;
   static const int resumeEncoder = 0x41;
   static const int changeVideoParams = 0x42;
+  static const int requestKeyframe = 0x43;
 }
 
 class DeviceStatusSubType {
@@ -43,8 +44,7 @@ class AppEntry {
   String get display => label.isEmpty ? bundle : '$label  ·  $bundle';
 
   @override
-  bool operator ==(Object other) =>
-      other is AppEntry && other.bundle == bundle;
+  bool operator ==(Object other) => other is AppEntry && other.bundle == bundle;
 
   @override
   int get hashCode => bundle.hashCode;
@@ -61,14 +61,18 @@ List<AppEntry> parseAppList(Uint8List body) {
   final out = <AppEntry>[];
   for (int i = 0; i < count; i++) {
     if (off + 2 > body.length) break;
-    final bl = bd.getUint16(off, Endian.big); off += 2;
+    final bl = bd.getUint16(off, Endian.big);
+    off += 2;
     if (off + bl > body.length) break;
-    final bundle = utf8.decode(body.sublist(off, off + bl), allowMalformed: true);
+    final bundle =
+        utf8.decode(body.sublist(off, off + bl), allowMalformed: true);
     off += bl;
     if (off + 2 > body.length) break;
-    final ll = bd.getUint16(off, Endian.big); off += 2;
+    final ll = bd.getUint16(off, Endian.big);
+    off += 2;
     if (off + ll > body.length) break;
-    final label = utf8.decode(body.sublist(off, off + ll), allowMalformed: true);
+    final label =
+        utf8.decode(body.sublist(off, off + ll), allowMalformed: true);
     off += ll;
     out.add(AppEntry(bundle: bundle, label: label));
   }
@@ -97,7 +101,8 @@ class VideoConfig {
   final int fps;
   final Uint8List sps;
   final Uint8List pps;
-  VideoConfig(this.codec, this.width, this.height, this.fps, this.sps, this.pps);
+  VideoConfig(
+      this.codec, this.width, this.height, this.fps, this.sps, this.pps);
 
   static VideoConfig parse(Uint8List payload) {
     final bd = ByteData.sublistView(payload);
@@ -110,11 +115,15 @@ class VideoConfig {
       return VideoConfig(codec, w, h, fps, Uint8List(0), Uint8List(0));
     }
     int off = 13;
-    final spsLen = bd.getUint16(off, Endian.big); off += 2;
-    final sps = Uint8List.sublistView(payload, off, off + spsLen); off += spsLen;
-    final ppsLen = bd.getUint16(off, Endian.big); off += 2;
+    final spsLen = bd.getUint16(off, Endian.big);
+    off += 2;
+    final sps = Uint8List.sublistView(payload, off, off + spsLen);
+    off += spsLen;
+    final ppsLen = bd.getUint16(off, Endian.big);
+    off += 2;
     final pps = Uint8List.sublistView(payload, off, off + ppsLen);
-    return VideoConfig(codec, w, h, fps, Uint8List.fromList(sps), Uint8List.fromList(pps));
+    return VideoConfig(
+        codec, w, h, fps, Uint8List.fromList(sps), Uint8List.fromList(pps));
   }
 }
 
@@ -124,9 +133,9 @@ class VideoConfig {
 ///   服务端将 width/height 写在 RGBA 数据头部 (header(8) + pixels)，已合并到 nal 字段中。
 class VideoFrame {
   final bool keyframe;
-  final int ptsMs;
+  final int ptsUs;
   final Uint8List nal;
-  VideoFrame(this.keyframe, this.ptsMs, this.nal);
+  VideoFrame(this.keyframe, this.ptsUs, this.nal);
 
   static VideoFrame parse(Uint8List payload) {
     final bd = ByteData.sublistView(payload);
@@ -165,7 +174,8 @@ Uint8List encodeTouch(double x, double y, int pointerId) {
 }
 
 /// 鼠标事件 body: action(1) button(1) x(4) y(4) axisValue(4 float BE)
-Uint8List encodeMouseEvent(int action, int button, double x, double y, double axisValue) {
+Uint8List encodeMouseEvent(
+    int action, int button, double x, double y, double axisValue) {
   final out = Uint8List(14);
   final bd = ByteData.sublistView(out);
   out[0] = action;
@@ -231,7 +241,7 @@ class OhKeyCode {
   static const int tab = 2049;
   static const int space = 2050;
   static const int enter = 2054;
-  static const int del = 2055;        // Backspace
+  static const int del = 2055; // Backspace
   static const int grave = 2056;
   static const int minus = 2057;
   static const int equals = 2058;
@@ -251,10 +261,10 @@ class OhKeyCode {
   static const int scrollLock = 2075;
   static const int metaLeft = 2076;
   static const int metaRight = 2077;
-  static const int sysrq = 2079;      // PrintScreen
-  static const int moveHome = 2081;   // 键盘 Home
-  static const int moveEnd = 2082;    // 键盘 End
-  static const int insert = 2083;     // Insert
+  static const int sysrq = 2079; // PrintScreen
+  static const int moveHome = 2081; // 键盘 Home
+  static const int moveEnd = 2082; // 键盘 End
+  static const int insert = 2083; // Insert
   static const int f1 = 2090;
   static const int numLock = 2102;
   static const int numpad0 = 2103;
@@ -276,8 +286,8 @@ class OhKeyCode {
   static const int numpadEnter = 2119;
   static const int numpadEquals = 2120;
   // 导航功能键（与 OH KeyCode 标准值对齐）
-  static const int home = 1;          // 系统 Home 键
-  static const int back = 2;          // 系统 Back 键
+  static const int home = 1; // 系统 Home 键
+  static const int back = 2; // 系统 Back 键
 }
 
 /// 切包解析器

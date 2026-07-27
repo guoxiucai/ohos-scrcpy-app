@@ -28,6 +28,7 @@ export class ControlSubType {
   static readonly PAUSE_ENCODER: number = 0x40;
   static readonly RESUME_ENCODER: number = 0x41;
   static readonly CHANGE_VIDEO_PARAMS: number = 0x42;
+  static readonly REQUEST_KEYFRAME: number = 0x43;
 }
 
 export class DeviceStatusSubType {
@@ -118,11 +119,11 @@ export function encodeVideoConfig(codec: number, width: number, height: number, 
 }
 
 // 视频帧 payload: flags(1) pts(8) nal(...)
-export function encodeVideoFrame(isKeyframe: boolean, ptsMs: bigint, nal: Uint8Array): Uint8Array {
+export function encodeVideoFrame(isKeyframe: boolean, ptsUs: bigint, nal: Uint8Array): Uint8Array {
   const buf = new ArrayBuffer(9 + nal.byteLength);
   const view = new DataView(buf);
   view.setUint8(0, isKeyframe ? 1 : 0);
-  view.setBigUint64(1, ptsMs, false);
+  view.setBigUint64(1, ptsUs, false);
   new Uint8Array(buf, 9, nal.byteLength).set(nal);
   return new Uint8Array(buf);
 }

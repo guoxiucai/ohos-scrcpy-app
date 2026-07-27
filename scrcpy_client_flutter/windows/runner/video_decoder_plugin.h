@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "i_decoder.h"
+#include "media_capture.h"
 
 class H264D3D11Decoder;
 
@@ -28,11 +29,14 @@ class VideoDecoderPlugin : public flutter::Plugin {
 
   void OnFrame(DecodedFrame frame);
   void CleanupDecoder();
+  MediaOperationResult CapturePng();
 
   flutter::PluginRegistrarWindows* registrar_;
   flutter::TextureRegistrar* texture_registrar_;
 
   std::unique_ptr<flutter::MethodChannel<flutter::EncodableValue>> channel_;
+  std::unique_ptr<H264Mp4Recorder> recorder_;
+  bool media_foundation_started_ = false;
 
   std::unique_ptr<flutter::TextureVariant> cpu_texture_variant_;
   int64_t cpu_texture_id_ = -1;

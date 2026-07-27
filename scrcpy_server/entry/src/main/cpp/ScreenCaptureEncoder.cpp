@@ -52,6 +52,27 @@ public:
 
     bool Start(const CaptureConfig &cfg);
     void Stop();
+    bool RequestKeyFrame() {
+        std::lock_guard<std::mutex> g(mu_);
+        if (encoder_ == nullptr || mode_ != kCodecH264 || stopping_.load()) {
+            OH_LOG_WARN(LOG_APP, "RequestKeyFrame ignored: encoder unavailable");
+            return false;
+        }
+        OH_AVFormat *format = OH_AVFormat_Create();
+        if (format == nullptr) {
+            OH_LOG_WARN(LOG_APP, "RequestKeyFrame: create format failed");
+            return false;
+        }
+        OH_AVFormat_SetIntValue(format, OH_MD_KEY_REQUEST_I_FRAME, 1);
+        auto ret = OH_VideoEncoder_SetParameter(encoder_, format);
+        OH_AVFormat_Destroy(format);
+        if (ret != AV_ERR_OK) {
+            OH_LOG_WARN(LOG_APP, "RequestKeyFrame failed: %{public}d", ret);
+            return false;
+        }
+        OH_LOG_INFO(LOG_APP, "RequestKeyFrame requested");
+        return true;
+    }
     void SetPaused(bool paused) {
         bool prev = encoder_paused_.exchange(paused, std::memory_order_relaxed);
         if (paused == prev) return;
@@ -91,6 +112,7 @@ private:
     void SendH264Config(const std::vector<uint8_t> &sps, const std::vector<uint8_t> &pps);
     void SendRawConfig(int32_t codec, int32_t width, int32_t height);
     void SendVideoFrame(bool keyframe, int64_t ptsUs, const uint8_t *nal, size_t size);
+    int64_t NormalizeTimestampUs(int64_t sourcePts);
 
     bool ParseSpsPps(const uint8_t *data, int32_t size,
                      std::vector<uint8_t> &sps, std::vector<uint8_t> &pps) const;
@@ -117,6 +139,10 @@ private:
     std::vector<uint8_t> jpegBuf_;
 
     std::atomic<int64_t> lastRawEmitMs_{0};
+    std::mutex pts_mu_;
+    int64_t lastSourcePts_ = -1;
+    int64_t normalizedPtsUs_ = 0;
+    int64_t sourcePtsDivisor_ = 0;
 };
 
 bool CaptureSession::Start(const CaptureConfig &cfg) {
@@ -128,6 +154,12 @@ bool CaptureSession::Start(const CaptureConfig &cfg) {
     }
     stopping_.store(false);
     cfg_ = cfg;
+    {
+        std::lock_guard<std::mutex> ptsGuard(pts_mu_);
+        lastSourcePts_ = -1;
+        normalizedPtsUs_ = 0;
+        sourcePtsDivisor_ = 0;
+    }
     configEmitted_ = false;
     sps_.clear();
     pps_.clear();
@@ -506,7 +538,8 @@ void CaptureSession::HandleEncodedOutput(uint32_t index, OH_AVBuffer *buffer) {
         if (needConfig) {
             SendH264Config(spsCopy, ppsCopy);
         }
-        SendVideoFrame(isKey, attr.pts, data, static_cast<size_t>(size));
+        SendVideoFrame(isKey, NormalizeTimestampUs(attr.pts), data,
+                       static_cast<size_t>(size));
     }
     OH_VideoEncoder_FreeOutputBuffer(encoder_, index);
 }
@@ -627,13 +660,16 @@ void CaptureSession::HandleRawBufferAvailable() {
     if (mode_ == kCodecJpeg) {
         // 编码失败时退回发送原始 RGBA，避免画面冻结。
         if (EncodeJpeg(rawBuf_.data(), width, height, jpegBuf_)) {
-            SendVideoFrame(true, timestamp, jpegBuf_.data(), jpegBuf_.size());
+            SendVideoFrame(true, NormalizeTimestampUs(timestamp),
+                           jpegBuf_.data(), jpegBuf_.size());
         } else {
             OH_LOG_WARN(LOG_APP, "EncodeJpeg failed, falling back to RAW frame");
-            SendVideoFrame(true, timestamp, rawBuf_.data(), rawBuf_.size());
+            SendVideoFrame(true, NormalizeTimestampUs(timestamp),
+                           rawBuf_.data(), rawBuf_.size());
         }
     } else {
-        SendVideoFrame(true, timestamp, rawBuf_.data(), rawBuf_.size());
+        SendVideoFrame(true, NormalizeTimestampUs(timestamp),
+                       rawBuf_.data(), rawBuf_.size());
     }
 
     OH_NativeBuffer_Unmap(buf);
@@ -725,6 +761,29 @@ void CaptureSession::SendRawConfig(int32_t codec, int32_t width, int32_t height)
     TcpServer::Instance().SetVideoConfig(p.data(), p.size());
 }
 
+int64_t CaptureSession::NormalizeTimestampUs(int64_t sourcePts) {
+    std::lock_guard<std::mutex> g(pts_mu_);
+    if (lastSourcePts_ < 0) {
+        lastSourcePts_ = sourcePts;
+        return 0;
+    }
+    const int64_t delta = sourcePts - lastSourcePts_;
+    lastSourcePts_ = sourcePts;
+    if (delta <= 0) {
+        return normalizedPtsUs_;
+    }
+    if (sourcePtsDivisor_ == 0) {
+        // OH_AVCodec 文档定义 PTS 为微秒，但部分 surface 编码器实际透传纳秒时间戳。
+        // 通过首个帧间隔识别单位，并统一成协议约定的微秒。
+        sourcePtsDivisor_ = delta > 1'000'000 ? 1000 : 1;
+        OH_LOG_INFO(LOG_APP,
+                    "timestamp unit detected divisor=%{public}ld firstDelta=%{public}ld",
+                    static_cast<long>(sourcePtsDivisor_), static_cast<long>(delta));
+    }
+    normalizedPtsUs_ += delta / sourcePtsDivisor_;
+    return normalizedPtsUs_;
+}
+
 void CaptureSession::SendVideoFrame(bool keyframe, int64_t ptsUs, const uint8_t *nal, size_t size) {
     // 直接构建完整的 videoFrame payload（flags+pts+data），作为一次 alloc 传给 TcpServer。
     // 相比原来先组 p 再让 EncodeFrame 再包一层，节省一次 vector 分配和 memcpy。
@@ -753,6 +812,10 @@ void StopCapture() {
 
 void SetEncoderPaused(bool paused) {
     CaptureSession::Instance().SetPaused(paused);
+}
+
+bool RequestKeyFrame() {
+    return CaptureSession::Instance().RequestKeyFrame();
 }
 
 bool ProbeScreenCapture(const CaptureConfig &cfg) {

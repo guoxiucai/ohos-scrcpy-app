@@ -78,7 +78,8 @@ Future<void> showResultDialog(
                     fontFamily: kMonoFontFamily,
                     fontSize: 11,
                     height: 1.5,
-                    color: ok ? AppColors.textSecondary : const Color(0xFFFCA5A5),
+                    color:
+                        ok ? AppColors.textSecondary : const Color(0xFFFCA5A5),
                   ),
                 ),
               ),
@@ -91,6 +92,53 @@ Future<void> showResultDialog(
       ],
     ),
   );
+}
+
+/// 媒体保存完成对话框。返回 true 时由调用方打开文件所在位置。
+Future<bool> showMediaSavedDialog(
+  BuildContext context, {
+  required String title,
+  required String path,
+}) async {
+  final result = await showDialog<bool>(
+    context: context,
+    barrierColor: Colors.black54,
+    builder: (ctx) => _BaseDialog(
+      icon: Icons.check_circle,
+      iconColor: AppColors.success,
+      title: title,
+      content: Container(
+        constraints: const BoxConstraints(maxHeight: 220, maxWidth: 480),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: const Color(0xFF050810),
+          border: Border.all(color: AppColors.border),
+          borderRadius: BorderRadius.circular(AppRadius.sm),
+        ),
+        child: SelectableText(
+          path,
+          style: const TextStyle(
+            fontFamily: kMonoFontFamily,
+            fontSize: 11,
+            height: 1.5,
+            color: AppColors.textSecondary,
+          ),
+        ),
+      ),
+      actions: [
+        OutlinedButton(
+          onPressed: () => Navigator.of(ctx).pop(false),
+          child: const Text('关闭'),
+        ),
+        FilledButton.icon(
+          onPressed: () => Navigator.of(ctx).pop(true),
+          icon: const Icon(Icons.folder_open, size: 15),
+          label: const Text('打开路径'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
 }
 
 class _BaseDialog extends StatelessWidget {
@@ -129,7 +177,8 @@ class _BaseDialog extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   Container(
-                    width: 28, height: 28,
+                    width: 28,
+                    height: 28,
                     decoration: BoxDecoration(
                       color: iconColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(AppRadius.sm),

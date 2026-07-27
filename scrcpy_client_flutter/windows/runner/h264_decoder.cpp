@@ -54,12 +54,12 @@ bool H264Decoder::Init(const EncodableMap& args, std::string* err) {
   return true;
 }
 
-void H264Decoder::Feed(std::vector<uint8_t> data, bool keyframe, int64_t pts_ms) {
+void H264Decoder::Feed(std::vector<uint8_t> data, bool keyframe, int64_t pts_us) {
   bool should_pause = false, should_resume = false;
   {
     std::lock_guard<std::mutex> lk(mu_);
     if (queue_.size() < kQueueMax) {
-      queue_.push_back({std::move(data), keyframe, pts_ms});
+      queue_.push_back({std::move(data), keyframe, pts_us});
     } else {
       // 队列满：丢弃此帧并标记（WorkerLoop 将跳过 P 帧直到下一关键帧）
       has_dropped_.store(true, std::memory_order_relaxed);
@@ -212,7 +212,7 @@ void H264Decoder::WorkerLoop() {
     Microsoft::WRL::ComPtr<IMFSample> sample;
     MFCreateSample(&sample);
     sample->AddBuffer(buf.Get());
-    sample->SetSampleTime(task.pts_ms * 10000LL);  // ms → 100ns
+    sample->SetSampleTime(task.pts_us * 10LL);  // μs → 100ns
 
     HRESULT hr = mft_->ProcessInput(0, sample.Get(), 0);
     if (FAILED(hr)) {

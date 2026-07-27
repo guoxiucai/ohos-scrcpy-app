@@ -16,6 +16,7 @@ add_executable(${BINARY_NAME} WIN32
   "h264_d3d11_decoder.cpp"
   "jpeg_decoder.cpp"
   "raw_decoder.cpp"
+  "media_capture.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
@@ -47,7 +48,11 @@ target_link_libraries(${BINARY_NAME} PRIVATE "dxgi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "mf.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "mfplat.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "mfuuid.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "mfreadwrite.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "shlwapi.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "windowscodecs.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "shell32.lib")
+target_link_libraries(${BINARY_NAME} PRIVATE "ole32.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.
