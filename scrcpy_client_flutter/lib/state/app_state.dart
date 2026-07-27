@@ -52,6 +52,9 @@ class AppState extends ChangeNotifier {
   DateTime? _recordingStartedAt;
   Timer? _recordingTimer;
   Timer? _keyframeTimer;
+  Timer? _recordingFrameRefreshTimer;
+  int _framesAtLastRecordingRefresh = 0;
+  bool _awaitingRecordingEncoderConfig = false;
   bool _decoderBackpressure = false;
   bool _recorderBackpressure = false;
   bool _encoderPauseSent = false;
@@ -289,6 +292,11 @@ class AppState extends ChangeNotifier {
       case PacketType.videoConfig:
         final cfg = VideoConfig.parse(p.payload);
         final old = videoConfig;
+        if (recordingState == RecordingState.waitingForKeyframe &&
+            _awaitingRecordingEncoderConfig) {
+          await _restartWaitingRecorderForConfig(cfg);
+          break;
+        }
         if (old != null &&
             old.codec == cfg.codec &&
             old.width == cfg.width &&
@@ -296,6 +304,10 @@ class AppState extends ChangeNotifier {
             old.fps == cfg.fps &&
             listEquals(old.sps, cfg.sps) &&
             listEquals(old.pps, cfg.pps)) {
+          break;
+        }
+        if (recordingState == RecordingState.waitingForKeyframe) {
+          await _restartWaitingRecorderForConfig(cfg);
           break;
         }
         await _finishRecordingForLifecycle();
@@ -407,8 +419,9 @@ class AppState extends ChangeNotifier {
     _keyframeTimer?.cancel();
     _keyframeTimer = Timer(const Duration(seconds: 5), () async {
       if (recordingState != RecordingState.waitingForKeyframe) return;
-      await decoder.cancelRecording();
+      _cancelRecordingTimers();
       recordingState = RecordingState.idle;
+      await decoder.cancelRecording();
       _publishMediaNotice(const MediaNotice(
         MediaKind.recording,
         MediaSaveResult(ok: false, error: '等待关键帧超时，录制未开始'),
@@ -417,27 +430,12 @@ class AppState extends ChangeNotifier {
     });
     notifyListeners();
 
-    // 2. 先启动 native 录制器，确保 recorder_->Start() 已完成。
-    final result = await decoder.startRecording(
-      width: cfg.width,
-      height: cfg.height,
-      fps: cfg.fps,
-      bitrate: targetBitrate,
-      sps: cfg.sps,
-      pps: cfg.pps,
-    );
-    if (!result.ok) {
-      _keyframeTimer?.cancel();
-      _keyframeTimer = null;
-      recordingState = RecordingState.idle;
-      notifyListeners();
-      return AppActionResult.fail(result.error ?? '启动录制失败');
-    }
+    // 2. 完整重建服务端编码会话。收到新 SPS/PPS 后，包处理队列会先重建
+    // 本地解码器和 recorder，再继续处理紧随其后的新 IDR。
+    _awaitingRecordingEncoderConfig = true;
+    sendControl(ControlSubType.restartEncoder, Uint8List(0));
 
-    // 3. 录制器就绪后才请求关键帧，确保 IDR 到达时 recorder 已 active。
-    sendControl(ControlSubType.requestKeyframe, Uint8List(0));
-
-    return const AppActionResult.ok('正在等待关键帧…');
+    return const AppActionResult.ok('正在重建编码器并等待关键帧…');
   }
 
   Future<AppActionResult> stopRecording() async {
@@ -445,9 +443,9 @@ class AppState extends ChangeNotifier {
       return const AppActionResult.fail('当前没有录制任务');
     }
     if (recordingState == RecordingState.waitingForKeyframe) {
-      _keyframeTimer?.cancel();
-      await decoder.cancelRecording();
+      _cancelRecordingTimers();
       recordingState = RecordingState.idle;
+      await decoder.cancelRecording();
       notifyListeners();
       return const AppActionResult.ok('已取消录制');
     }
@@ -455,6 +453,7 @@ class AppState extends ChangeNotifier {
       return const AppActionResult.fail('正在保存录制文件');
     }
 
+    await _refreshRecordingFrameAndWait();
     recordingState = RecordingState.finalizing;
     _cancelRecordingTimers();
     notifyListeners();
@@ -509,6 +508,7 @@ class AppState extends ChangeNotifier {
           notifyListeners();
         }
       });
+      _startRecordingFrameRefresh();
       notifyListeners();
     } else if (state == 'error' && recordingLocked) {
       _cancelRecordingTimers();
@@ -527,6 +527,90 @@ class AppState extends ChangeNotifier {
     _keyframeTimer = null;
     _recordingTimer?.cancel();
     _recordingTimer = null;
+    _recordingFrameRefreshTimer?.cancel();
+    _recordingFrameRefreshTimer = null;
+    _awaitingRecordingEncoderConfig = false;
+  }
+
+  Future<void> _restartWaitingRecorderForConfig(VideoConfig cfg) async {
+    _awaitingRecordingEncoderConfig = false;
+    videoConfig = cfg;
+    await decoder.dispose();
+    await decoder.init(
+      codec: cfg.codec,
+      width: cfg.width,
+      height: cfg.height,
+      sps: cfg.sps,
+      pps: cfg.pps,
+    );
+    if (recordingState != RecordingState.waitingForKeyframe) {
+      return;
+    }
+    if (cfg.codec != VideoCodec.h264) {
+      _cancelRecordingTimers();
+      recordingState = RecordingState.idle;
+      _publishMediaNotice(const MediaNotice(
+        MediaKind.recording,
+        MediaSaveResult(ok: false, error: '服务端重建编码器后未提供 H.264 码流'),
+      ));
+      notifyListeners();
+      return;
+    }
+    final result = await decoder.startRecording(
+      width: cfg.width,
+      height: cfg.height,
+      fps: cfg.fps,
+      bitrate: targetBitrate,
+      sps: cfg.sps,
+      pps: cfg.pps,
+    );
+    if (!result.ok) {
+      _cancelRecordingTimers();
+      recordingState = RecordingState.idle;
+      _publishMediaNotice(MediaNotice(
+        MediaKind.recording,
+        MediaSaveResult(
+          ok: false,
+          error: result.error ?? '无法使用重建后的编码参数开始录制',
+        ),
+      ));
+    }
+    notifyListeners();
+  }
+
+  void _startRecordingFrameRefresh() {
+    _framesAtLastRecordingRefresh = frames;
+    _recordingFrameRefreshTimer?.cancel();
+    _recordingFrameRefreshTimer =
+        Timer.periodic(const Duration(milliseconds: 250), (_) {
+      if (recordingState != RecordingState.recording ||
+          _encoderPauseSent ||
+          connState != ConnState.connected) {
+        return;
+      }
+      if (frames == _framesAtLastRecordingRefresh) {
+        sendControl(ControlSubType.refreshCaptureFrame, Uint8List(0));
+      }
+      _framesAtLastRecordingRefresh = frames;
+    });
+  }
+
+  Future<void> _refreshRecordingFrameAndWait() async {
+    if (recordingState != RecordingState.recording ||
+        _encoderPauseSent ||
+        connState != ConnState.connected) {
+      return;
+    }
+    final before = frames;
+    sendControl(ControlSubType.refreshCaptureFrame, Uint8List(0));
+    for (int attempt = 0; attempt < 15; attempt++) {
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      if (frames > before ||
+          recordingState != RecordingState.recording ||
+          connState != ConnState.connected) {
+        return;
+      }
+    }
   }
 
   void _publishMediaNotice(MediaNotice notice) {

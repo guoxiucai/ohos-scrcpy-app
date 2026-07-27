@@ -16,7 +16,8 @@ struct CaptureConfig {
 bool StartCapture(const CaptureConfig &cfg);
 void StopCapture();
 void SetEncoderPaused(bool paused);
-bool RequestKeyFrame();
+bool RestartEncoder();
+bool RefreshCaptureFrame();
 bool ProbeScreenCapture(const CaptureConfig &cfg);
 
 } // namespace scrcpy

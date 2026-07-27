@@ -52,47 +52,47 @@ public:
 
     bool Start(const CaptureConfig &cfg);
     void Stop();
-    bool RequestKeyFrame() {
+    bool RestartEncoder() {
+        CaptureConfig cfg;
+        {
+            std::lock_guard<std::mutex> g(mu_);
+            if (encoder_ == nullptr || capture_ == nullptr || window_ == nullptr ||
+                mode_ != kCodecH264 || stopping_.load()) {
+                OH_LOG_WARN(LOG_APP, "RestartEncoder ignored: H264 session unavailable");
+                return false;
+            }
+            cfg = cfg_;
+        }
+
+        OH_LOG_INFO(LOG_APP, "RestartEncoder: rebuilding H264 capture session");
+        Stop();
+        encoder_paused_.store(false, std::memory_order_relaxed);
+        bool ok = Start(cfg);
+        OH_LOG_INFO(LOG_APP, "RestartEncoder result=%{public}d", ok ? 1 : 0);
+        return ok;
+    }
+    bool RefreshCaptureFrame() {
         std::lock_guard<std::mutex> g(mu_);
         if (encoder_ == nullptr || capture_ == nullptr || window_ == nullptr ||
-            mode_ != kCodecH264 || stopping_.load()) {
-            OH_LOG_WARN(LOG_APP, "RequestKeyFrame ignored: encoder unavailable");
+            mode_ != kCodecH264 || stopping_.load() ||
+            encoder_paused_.load(std::memory_order_relaxed)) {
             return false;
         }
 
-        // 静止画面下，编码器可能长时间收不到新的 surface 输入。
-        // SetParameter 返回成功只代表请求已被接受，不能保证立即输出 IDR。
-        // 在未因背压暂停时刷新采集输入，让恢复后的首个 surface 帧承载 I 帧请求。
-        if (!encoder_paused_.load(std::memory_order_relaxed)) {
-            auto stopRet = OH_AVScreenCapture_StopScreenCapture(capture_);
-            if (stopRet == AV_SCREEN_CAPTURE_ERR_OK) {
-                auto startRet = OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
-                if (startRet != AV_SCREEN_CAPTURE_ERR_OK) {
-                    OH_LOG_WARN(LOG_APP,
-                                "RequestKeyFrame: restart screen capture failed: %{public}d",
-                                startRet);
-                    return false;
-                }
-            } else {
-                OH_LOG_WARN(LOG_APP,
-                            "RequestKeyFrame: stop screen capture failed: %{public}d",
-                            stopRet);
-            }
-        }
-
-        OH_AVFormat *format = OH_AVFormat_Create();
-        if (format == nullptr) {
-            OH_LOG_WARN(LOG_APP, "RequestKeyFrame: create format failed");
+        auto stopRet = OH_AVScreenCapture_StopScreenCapture(capture_);
+        if (stopRet != AV_SCREEN_CAPTURE_ERR_OK) {
+            OH_LOG_WARN(LOG_APP,
+                        "RefreshCaptureFrame: stop screen capture failed: %{public}d",
+                        stopRet);
             return false;
         }
-        OH_AVFormat_SetIntValue(format, OH_MD_KEY_REQUEST_I_FRAME, 1);
-        auto ret = OH_VideoEncoder_SetParameter(encoder_, format);
-        OH_AVFormat_Destroy(format);
-        if (ret != AV_ERR_OK) {
-            OH_LOG_WARN(LOG_APP, "RequestKeyFrame failed: %{public}d", ret);
+        auto startRet = OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
+        if (startRet != AV_SCREEN_CAPTURE_ERR_OK) {
+            OH_LOG_WARN(LOG_APP,
+                        "RefreshCaptureFrame: restart screen capture failed: %{public}d",
+                        startRet);
             return false;
         }
-        OH_LOG_INFO(LOG_APP, "RequestKeyFrame requested after capture refresh");
         return true;
     }
     void SetPaused(bool paused) {
@@ -836,8 +836,12 @@ void SetEncoderPaused(bool paused) {
     CaptureSession::Instance().SetPaused(paused);
 }
 
-bool RequestKeyFrame() {
-    return CaptureSession::Instance().RequestKeyFrame();
+bool RestartEncoder() {
+    return CaptureSession::Instance().RestartEncoder();
+}
+
+bool RefreshCaptureFrame() {
+    return CaptureSession::Instance().RefreshCaptureFrame();
 }
 
 bool ProbeScreenCapture(const CaptureConfig &cfg) {

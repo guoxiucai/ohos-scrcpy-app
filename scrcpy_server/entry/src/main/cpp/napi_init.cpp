@@ -103,9 +103,15 @@ static napi_value SetEncoderPausedJs(napi_env env, napi_callback_info info) {
     return undef;
 }
 
-static napi_value RequestKeyFrameJs(napi_env env, napi_callback_info /*info*/) {
+static napi_value RestartEncoderJs(napi_env env, napi_callback_info /*info*/) {
     napi_value out;
-    napi_get_boolean(env, scrcpy::RequestKeyFrame(), &out);
+    napi_get_boolean(env, scrcpy::RestartEncoder(), &out);
+    return out;
+}
+
+static napi_value RefreshCaptureFrameJs(napi_env env, napi_callback_info /*info*/) {
+    napi_value out;
+    napi_get_boolean(env, scrcpy::RefreshCaptureFrame(), &out);
     return out;
 }
 
@@ -167,7 +173,8 @@ static napi_value Init(napi_env env, napi_value exports) {
         {"startCapture", nullptr, StartCaptureJs, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"stopCapture", nullptr, StopCaptureJs, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"setEncoderPaused", nullptr, SetEncoderPausedJs, nullptr, nullptr, nullptr, napi_default, nullptr},
-        {"requestKeyFrame", nullptr, RequestKeyFrameJs, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"restartEncoder", nullptr, RestartEncoderJs, nullptr, nullptr, nullptr, napi_default, nullptr},
+        {"refreshCaptureFrame", nullptr, RefreshCaptureFrameJs, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"broadcastDeviceStatus", nullptr, BroadcastDeviceStatus, nullptr, nullptr, nullptr, napi_default, nullptr},
         {"probeScreenCapture", nullptr, ProbeScreenCaptureJs, nullptr, nullptr, nullptr, napi_default, nullptr},
     };

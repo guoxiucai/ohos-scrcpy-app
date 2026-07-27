@@ -28,8 +28,10 @@ class ControlSubType {
   static const int pauseEncoder = 0x40;
   static const int resumeEncoder = 0x41;
   static const int changeVideoParams = 0x42;
-  // 服务端刷新 H.264 采集输入，并请求恢复后的首个输入帧编码为 IDR。
-  static const int requestKeyframe = 0x43;
+  // 服务端完整重建 H.264 编码器和采集会话，新码流从 SPS/PPS、IDR 开始。
+  static const int restartEncoder = 0x43;
+  // 仅刷新采集 surface，让静止画面产生一帧真实的编码输出。
+  static const int refreshCaptureFrame = 0x44;
 }
 
 class DeviceStatusSubType {

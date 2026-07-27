@@ -23,7 +23,8 @@ void main() {
     expect(frame.keyframe, isTrue);
     expect(frame.ptsUs, 1234567);
     expect(frame.nal, [0, 0, 1]);
-    expect(ControlSubType.requestKeyframe, 0x43);
+    expect(ControlSubType.restartEncoder, 0x43);
+    expect(ControlSubType.refreshCaptureFrame, 0x44);
   });
 
   test('原生媒体结果映射保留路径与统计信息', () {

@@ -19,7 +19,8 @@ export const startCapture: (cfg: CaptureConfig) => boolean;
 export const stopCapture: () => void;
 
 export const setEncoderPaused: (paused: boolean) => void;
-export const requestKeyFrame: () => boolean;
+export const restartEncoder: () => boolean;
+export const refreshCaptureFrame: () => boolean;
 
 export const probeScreenCapture: (cfg: CaptureConfig) => boolean;
 

@@ -251,44 +251,6 @@ struct H264Mp4Recorder::Impl {
     return true;
   }
 
-  bool WritePendingFrame(const PendingFrame& frame,
-                         int64_t duration_us,
-                         std::string* error) {
-    // VLC/Windows 播放链路需要在开头尽快收到一小段连续样本，才能及时
-    // 提交首个解码画面。固定补齐最多 1 秒，不随静止画面时长增加文件体积。
-    constexpr int64_t kPrimingSampleDurationUs = 100000;
-    constexpr int kMaxPrimingSampleCount = 10;
-    const bool needs_decoder_priming =
-        frame_count == 0 && frame.keyframe &&
-        duration_us > kPrimingSampleDurationUs * 2;
-    if (!needs_decoder_priming) {
-      return WriteFrame(frame, duration_us, error);
-    }
-
-    // 静止画面下，首个 IDR 与下一实际帧可能间隔数秒。部分 Windows/VLC
-    // 解码链路会等待后续样本才提交首帧，表现为开头黑屏。复用同一 IDR
-    // 生成有限数量的同步样本完成预热，最后一个样本承接剩余持续时间。
-    int64_t written_duration_us = 0;
-    for (int index = 0;
-         index < kMaxPrimingSampleCount &&
-         written_duration_us < duration_us;
-         ++index) {
-      const int64_t remaining_duration_us =
-          duration_us - written_duration_us;
-      const int64_t sample_duration_us =
-          index + 1 < kMaxPrimingSampleCount
-              ? std::min(kPrimingSampleDurationUs, remaining_duration_us)
-              : remaining_duration_us;
-      PendingFrame repeated = frame;
-      repeated.pts_us += written_duration_us;
-      if (!WriteFrame(repeated, sample_duration_us, error)) {
-        return false;
-      }
-      written_duration_us += sample_duration_us;
-    }
-    return true;
-  }
-
   void Reset(bool delete_temporary) {
     writer.Reset();
     if (delete_temporary && !temporary_path.empty()) {
@@ -417,7 +379,7 @@ void H264Mp4Recorder::Feed(const std::vector<uint8_t>& annex_b,
         std::max<int64_t>(1, elapsed_since_last.count());
     if (impl_->pending) {
       std::string error;
-      if (!impl_->WritePendingFrame(
+      if (!impl_->WriteFrame(
               *impl_->pending,
               frame_duration_us,
               &error)) {
@@ -455,7 +417,7 @@ MediaOperationResult H264Mp4Recorder::Stop() {
       std::max<int64_t>(1, final_duration.count());
 
   std::string error;
-  if (!impl_->WritePendingFrame(
+  if (!impl_->WriteFrame(
           *impl_->pending,
           final_duration_us, &error)) {
     impl_->Reset(true);

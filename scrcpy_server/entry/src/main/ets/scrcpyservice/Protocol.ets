@@ -28,8 +28,10 @@ export class ControlSubType {
   static readonly PAUSE_ENCODER: number = 0x40;
   static readonly RESUME_ENCODER: number = 0x41;
   static readonly CHANGE_VIDEO_PARAMS: number = 0x42;
-  // 刷新 H.264 采集输入，并请求恢复后的首个输入帧编码为 IDR。
-  static readonly REQUEST_KEYFRAME: number = 0x43;
+  // 完整重建 H.264 编码器和采集会话，新码流从 SPS/PPS、IDR 开始。
+  static readonly RESTART_ENCODER: number = 0x43;
+  // 仅刷新采集 surface，让静止画面产生一帧真实的编码输出。
+  static readonly REFRESH_CAPTURE_FRAME: number = 0x44;
 }
 
 export class DeviceStatusSubType {
