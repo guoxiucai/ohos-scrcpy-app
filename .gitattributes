@@ -1,0 +1,37 @@
+# 统一换行符：仓库中所有文本文件强制 LF
+# Windows 开发者检出时保持 LF（现代编辑器/IDE 均兼容）
+* text=auto eol=lf
+
+# 二进制文件 — 不做换行符转换
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.bmp       binary
+*.webp      binary
+*.zip       binary
+*.tar.gz    binary
+*.dmg       binary
+*.hap       binary
+*.hsp       binary
+*.exe       binary
+*.dll       binary
+*.so        binary
+*.dylib     binary
+*.framework binary
+*.a         binary
+*.lib       binary
+*.pak       binary
+*.pdb       binary
+*.cer       binary
+*.p12       binary
+*.keystore  binary
+*.jks       binary
+*.ttf       binary
+*.otf       binary
+*.woff      binary
+*.woff2     binary
+*.mp3       binary
+*.wav       binary
+*.ogg       binary
