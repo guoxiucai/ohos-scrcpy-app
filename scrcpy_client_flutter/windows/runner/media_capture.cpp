@@ -201,7 +201,6 @@ struct H264Mp4Recorder::Impl {
   std::unique_ptr<PendingFrame> pending;
   // 本地时钟计时 — 录制时长不再依赖服务端 PTS。
   // 即使屏幕静止无新帧，视频 duration 也能反映真实录制时间。
-  std::chrono::steady_clock::time_point recording_start;
   std::chrono::steady_clock::time_point last_frame_time;
   int64_t elapsed_us = 0;
 
@@ -366,7 +365,6 @@ void H264Mp4Recorder::Feed(const std::vector<uint8_t>& annex_b,
   if (!impl_->writing) {
     if (!keyframe || !converted.contains_idr) return;
     impl_->writing = true;
-    impl_->recording_start = now;
     impl_->last_frame_time = now;
     impl_->elapsed_us = 0;
     impl_->state_callback("recording", "");
@@ -375,16 +373,18 @@ void H264Mp4Recorder::Feed(const std::vector<uint8_t>& annex_b,
     const auto elapsed_since_last =
         std::chrono::duration_cast<std::chrono::microseconds>(
             now - impl_->last_frame_time);
+    const int64_t frame_duration_us =
+        std::max<int64_t>(1, elapsed_since_last.count());
     if (impl_->pending) {
       std::string error;
       if (!impl_->WriteFrame(
               *impl_->pending,
-              std::max<int64_t>(1, elapsed_since_last.count()),
+              frame_duration_us,
               &error)) {
         impl_->Fail(error);
         return;
       }
-      impl_->elapsed_us += elapsed_since_last.count();
+      impl_->elapsed_us += frame_duration_us;
     }
     impl_->last_frame_time = now;
   }
@@ -411,17 +411,19 @@ MediaOperationResult H264Mp4Recorder::Stop() {
   const auto final_duration =
       std::chrono::duration_cast<std::chrono::microseconds>(
           now - impl_->last_frame_time);
+  const int64_t final_duration_us =
+      std::max<int64_t>(1, final_duration.count());
 
   std::string error;
   if (!impl_->WriteFrame(
           *impl_->pending,
-          std::max<int64_t>(1, final_duration.count()), &error)) {
+          final_duration_us, &error)) {
     impl_->Reset(true);
     result.error = error;
     return result;
   }
   impl_->pending.reset();
-  impl_->elapsed_us += final_duration.count();
+  impl_->elapsed_us += final_duration_us;
   const int64_t duration = impl_->elapsed_us;
   const int frame_count = impl_->frame_count;
   const std::wstring temporary = impl_->temporary_path;
@@ -526,9 +528,10 @@ MediaOperationResult SavePixelFrameAsPng(
   if (SUCCEEDED(hr)) hr = encoder->Commit();
   // 必须在 MoveFileExW 之前释放所有 COM 对象，否则 encoder/frame
   // 内部可能仍持有 WIC stream 的文件句柄，导致 ERROR_SHARING_VIOLATION。
-  stream.Reset();
+  properties.Reset();
   frame.Reset();
   encoder.Reset();
+  stream.Reset();
   factory.Reset();
   if (FAILED(hr)) {
     DeleteFileW(temporary.c_str());

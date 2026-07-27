@@ -26,6 +26,7 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
   private var textureId: Int64 = -1
   private var session: VTDecompressionSession?
   private var formatDesc: CMVideoFormatDescription?
+  private var latestH264Keyframe: Data?
   private let lock = NSLock()
   private var latestPixelBuffer: CVPixelBuffer?
   private var codec: Int = 0
@@ -56,6 +57,7 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       let codec = (args["codec"] as? Int) ?? 0
       self.codec = codec
       teardown()
+      latestH264Keyframe = nil
       do {
         if codec == 0 {
           let sps = (args["sps"] as? FlutterStandardTypedData)?.data ?? Data()
@@ -91,7 +93,11 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       }
       let keyframe = (args["keyframe"] as? Bool) ?? false
       let ptsUs = (args["pts"] as? Int64) ?? Int64((args["pts"] as? Int) ?? 0)
-      recorder.feed(annexB: Data(nal), keyframe: keyframe, ptsUs: ptsUs)
+      let annexB = Data(nal)
+      if codec == 0 && keyframe {
+        latestH264Keyframe = annexB
+      }
+      recorder.feed(annexB: annexB, keyframe: keyframe, ptsUs: ptsUs)
       if codec == 0 {
         decode(annexB: [UInt8](nal))
       } else if codec == 1 {
@@ -111,6 +117,11 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
       let pps = (args["pps"] as? FlutterStandardTypedData)?.data ?? Data()
       do {
         try recorder.start(width: width, height: height, fps: fps, sps: sps, pps: pps)
+        // 静止画面可能不会产生新输入帧。用同一视频配置下缓存的 IDR
+        // 立即启动录制，后续仍会接收服务端主动请求到的关键帧。
+        if let keyframe = latestH264Keyframe {
+          recorder.feed(annexB: keyframe, keyframe: true, ptsUs: 0)
+        }
         result(mediaResult(ok: true))
       } catch {
         result(mediaResult(ok: false, error: error.localizedDescription))
@@ -136,6 +147,7 @@ class VideoDecoderPlugin: NSObject, FlutterTexture, FlutterPlugin {
     case "dispose":
       recorder.cancel()
       teardown()
+      latestH264Keyframe = nil
       if textureId >= 0 {
         registrar.textures.unregisterTexture(textureId)
         textureId = -1
@@ -530,11 +542,10 @@ private final class H264Mp4Recorder {
   private var finalUrl: URL?
   private var active = false
   private var writing = false
-  private var firstPtsUs: Int64 = 0
-  private var lastSourcePtsUs: Int64 = -1
   private var pending: PendingRecordFrame?
   private var frameCount = 0
-  private var nominalFrameUs: Int64 = 66_667
+  private var lastFrameUptimeNs: UInt64 = 0
+  private var elapsedUs: Int64 = 0
 
   init(stateCallback: @escaping StateCallback) {
     self.stateCallback = stateCallback
@@ -583,9 +594,8 @@ private final class H264Mp4Recorder {
         writing = false
         pending = nil
         frameCount = 0
-        firstPtsUs = 0
-        lastSourcePtsUs = -1
-        nominalFrameUs = max(1, 1_000_000 / Int64(fps))
+        lastFrameUptimeNs = 0
+        elapsedUs = 0
       } catch {
         startError = error
         reset(removeTemporary: true)
@@ -594,10 +604,10 @@ private final class H264Mp4Recorder {
     if let error = startError { throw error }
   }
 
-  func feed(annexB: Data, keyframe: Bool, ptsUs: Int64) {
+  func feed(annexB: Data, keyframe: Bool, ptsUs _: Int64) {
     guard !annexB.isEmpty else { return }
     queue.async { [weak self] in
-      self?.process(annexB: annexB, keyframe: keyframe, ptsUs: ptsUs)
+      self?.process(annexB: annexB, keyframe: keyframe)
     }
   }
 
@@ -614,16 +624,22 @@ private final class H264Mp4Recorder {
         return
       }
       if let frame = self.pending {
-        guard self.append(frame, durationUs: self.nominalFrameUs) else {
+        let now = DispatchTime.now().uptimeNanoseconds
+        let finalDurationUs = max(
+          1, Int64((now - self.lastFrameUptimeNs) / 1_000))
+        guard self.append(frame, durationUs: finalDurationUs) else {
           let message = writer.error?.localizedDescription ?? "写入 MP4 失败"
           self.reset(removeTemporary: true)
           completion(mediaResult(ok: false, error: message))
           return
         }
+        self.elapsedUs += finalDurationUs
         self.pending = nil
       }
-      let duration = max(0, self.lastSourcePtsUs - self.firstPtsUs + self.nominalFrameUs)
+      let duration = max(1, self.elapsedUs)
       let frames = self.frameCount
+      writer.endSession(
+        atSourceTime: CMTime(value: duration, timescale: 1_000_000))
       input.markAsFinished()
       writer.finishWriting {
         self.queue.async {
@@ -658,38 +674,38 @@ private final class H264Mp4Recorder {
     }
   }
 
-  private func process(annexB: Data, keyframe: Bool, ptsUs: Int64) {
+  private func process(annexB: Data, keyframe: Bool) {
     guard active else { return }
     let converted = Self.annexBToAvcc(annexB)
     guard !converted.data.isEmpty else { return }
+    let now = DispatchTime.now().uptimeNanoseconds
     if !writing {
       guard keyframe && converted.containsIdr else { return }
       guard let writer = writer, writer.startWriting() else {
         fail(writer?.error?.localizedDescription ?? "无法启动 MP4 写入")
         return
       }
-      firstPtsUs = ptsUs
-      lastSourcePtsUs = ptsUs
+      lastFrameUptimeNs = now
+      elapsedUs = 0
       writer.startSession(atSourceTime: .zero)
       writing = true
       stateCallback("recording", nil)
-    } else if ptsUs < lastSourcePtsUs {
-      fail("视频时间戳发生回退，录制已终止")
-      return
-    }
-
-    if let previous = pending {
-      let duration = max(1, ptsUs - previous.ptsUs)
-      guard append(previous, durationUs: duration) else {
-        fail(writer?.error?.localizedDescription ?? "写入 MP4 样本失败")
-        return
+    } else {
+      let durationUs = max(
+        1, Int64((now - lastFrameUptimeNs) / 1_000))
+      if let previous = pending {
+        guard append(previous, durationUs: durationUs) else {
+          fail(writer?.error?.localizedDescription ?? "写入 MP4 样本失败")
+          return
+        }
+        elapsedUs += durationUs
       }
+      lastFrameUptimeNs = now
     }
     pending = PendingRecordFrame(
       avcc: converted.data,
-      ptsUs: ptsUs,
+      ptsUs: elapsedUs,
       keyframe: keyframe && converted.containsIdr)
-    lastSourcePtsUs = ptsUs
   }
 
   private func append(_ frame: PendingRecordFrame, durationUs: Int64) -> Bool {
@@ -717,10 +733,9 @@ private final class H264Mp4Recorder {
     }
     guard copyStatus == kCMBlockBufferNoErr else { return false }
 
-    let relativePts = max(0, frame.ptsUs - firstPtsUs)
     var timing = CMSampleTimingInfo(
       duration: CMTime(value: durationUs, timescale: 1_000_000),
-      presentationTimeStamp: CMTime(value: relativePts, timescale: 1_000_000),
+      presentationTimeStamp: CMTime(value: frame.ptsUs, timescale: 1_000_000),
       decodeTimeStamp: .invalid)
     var sampleSize = frame.avcc.count
     var sampleBuffer: CMSampleBuffer?
@@ -768,8 +783,8 @@ private final class H264Mp4Recorder {
     writing = false
     pending = nil
     frameCount = 0
-    firstPtsUs = 0
-    lastSourcePtsUs = -1
+    lastFrameUptimeNs = 0
+    elapsedUs = 0
   }
 
   private static func createFormatDescription(sps: Data, pps: Data) throws

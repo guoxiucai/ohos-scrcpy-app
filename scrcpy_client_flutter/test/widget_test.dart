@@ -1,9 +1,12 @@
 import 'dart:typed_data';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:scrcpy_client_flutter/decoder/video_decoder.dart';
 import 'package:scrcpy_client_flutter/net/protocol.dart';
 import 'package:scrcpy_client_flutter/state/app_state.dart';
+import 'package:scrcpy_client_flutter/ui/sidebar.dart';
+import 'package:scrcpy_client_flutter/ui/toast.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,6 +50,55 @@ void main() {
     expect(result.ok, isFalse);
     expect(result.message, contains('录制过程中'));
     expect(state.targetFps, oldFps);
+    state.dispose();
+  });
+
+  testWidgets('录制参数锁定使用居中 Toast 提示 1.5 秒', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => showCenterToast(context, '录制过程中不允许切换分辨率或帧率'),
+            child: const Text('显示提示'),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('显示提示'));
+    await tester.pump();
+
+    expect(find.text('录制过程中不允许切换分辨率或帧率'), findsOneWidget);
+    expect(find.byType(SnackBar), findsNothing);
+
+    await tester.pump(const Duration(milliseconds: 1499));
+    expect(find.text('录制过程中不允许切换分辨率或帧率'), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 1));
+    expect(find.text('录制过程中不允许切换分辨率或帧率'), findsNothing);
+  });
+
+  testWidgets('冷启动时录制与截图区域默认折叠', (tester) async {
+    final state = AppState();
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 320,
+            height: 900,
+            child: Sidebar(state: state),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('录制与截图'), findsOneWidget);
+    expect(find.text('开始录制').hitTestable(), findsNothing);
+
+    await tester.tap(find.text('录制与截图'));
+    await tester.pumpAndSettle();
+    expect(find.text('开始录制').hitTestable(), findsOneWidget);
+
     state.dispose();
   });
 }

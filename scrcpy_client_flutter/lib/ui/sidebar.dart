@@ -50,6 +50,7 @@ class Sidebar extends StatelessWidget {
             icon: Icons.video_camera_back_outlined,
             title: '录制与截图',
             subtitle: 'RECORD · CAPTURE',
+            initiallyExpanded: false,
             child: _MediaCapturePanel(state: state),
           ),
           const SizedBox(height: 10),

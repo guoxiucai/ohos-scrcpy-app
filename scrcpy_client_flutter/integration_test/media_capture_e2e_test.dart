@@ -84,6 +84,11 @@ void main() {
     final recordingPath = recordingNotice.result.path;
     expect(recordingPath, isNotNull);
     expect(recordingPath, endsWith('.mp4'));
+    expect(
+      recordingNotice.result.durationUs,
+      greaterThanOrEqualTo(4000000),
+      reason: '录制 5 秒后的 MP4 时长不应因画面静止而变为 0',
+    );
     expect(File(recordingPath!).lengthSync(), greaterThan(1024));
     debugPrint('E2E_RECORDING_PATH=$recordingPath');
 

@@ -52,6 +52,8 @@ VideoDecoderPlugin::~VideoDecoderPlugin() {
 }
 
 void VideoDecoderPlugin::CleanupDecoder() {
+  latest_h264_keyframe_.clear();
+  codec_ = -1;
   if (decoder_) {
     decoder_->Teardown();
     decoder_.reset();
@@ -85,6 +87,7 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
 
     CleanupDecoder();
+    codec_ = codec;
 
     if (codec == 0) {
       if (!media_foundation_started_) {
@@ -216,6 +219,9 @@ void VideoDecoderPlugin::HandleMethodCall(
     }
 
     if (!nal.empty()) {
+      if (codec_ == 0 && keyframe) {
+        latest_h264_keyframe_ = nal;
+      }
       recorder_->Feed(nal, keyframe, pts_us);
       decoder_->Feed(std::move(nal), keyframe, pts_us);
     }
@@ -229,8 +235,14 @@ void VideoDecoderPlugin::HandleMethodCall(
       result->Success(EncodeMediaResult(response));
       return;
     }
-    result->Success(EncodeMediaResult(
-        recorder_->Start(std::get<EncodableMap>(*call.arguments()))));
+    MediaOperationResult response =
+        recorder_->Start(std::get<EncodableMap>(*call.arguments()));
+    if (response.ok && !latest_h264_keyframe_.empty()) {
+      // 静止画面可能不会产生新输入帧，复用当前视频配置下缓存的 IDR
+      // 立即启动录制；录制时间戳仍由本地单调时钟生成。
+      recorder_->Feed(latest_h264_keyframe_, true, 0);
+    }
+    result->Success(EncodeMediaResult(response));
 
   } else if (method == "stopRecording") {
     result->Success(EncodeMediaResult(recorder_->Stop()));

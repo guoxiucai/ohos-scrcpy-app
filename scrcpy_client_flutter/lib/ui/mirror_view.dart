@@ -8,6 +8,7 @@ import '../net/protocol.dart';
 import '../state/app_state.dart';
 import 'empty_state.dart';
 import 'theme.dart';
+import 'toast.dart';
 
 class MirrorView extends StatefulWidget {
   final AppState state;
@@ -450,9 +451,7 @@ class _StatusBar extends StatelessWidget {
       onSelected: (v) {
         final result = state.changeVideoParams(maxShort: v);
         if (!result.ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result.message)),
-          );
+          showCenterToast(context, result.message);
         }
       },
       itemBuilder: (_) => [
@@ -475,9 +474,7 @@ class _StatusBar extends StatelessWidget {
       onSelected: (v) {
         final result = state.changeVideoParams(fps: v);
         if (!result.ok) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(result.message)),
-          );
+          showCenterToast(context, result.message);
         }
       },
       itemBuilder: (_) => [
