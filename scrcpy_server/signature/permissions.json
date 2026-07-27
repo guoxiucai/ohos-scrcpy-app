@@ -9,27 +9,7 @@
       "userCancellable": false
     },
     {
-      "name": "ohos.permission.START_ABILITIES_FROM_BACKGROUND",
-      "userCancellable": false
-    },
-    {
-      "name": "ohos.permission.CAPTURE_SCREEN",
-      "userCancellable": false
-    },
-    {
-      "name": "ohos.permission.SYSTEM_FLOAT_WINDOW",
-      "userCancellable": false
-    },
-    {
-      "name": "ohos.permission.EXEMPT_CAPTURE_SCREEN_AUTHORIZE",
-      "userCancellable": false
-    },
-    {
       "name": "ohos.permission.GET_INSTALLED_BUNDLE_LIST",
-      "userCancellable": false
-    },
-    {
-      "name": "ohos.permission.INSTALL_BUNDLE",
       "userCancellable": false
     }
   ]

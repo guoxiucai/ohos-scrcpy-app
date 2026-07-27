@@ -6,6 +6,7 @@ import installer from '@ohos.bundle.installer';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { util } from '@kit.ArkTS';
 import { image } from '@kit.ImageKit';
+import { promptAction } from '@kit.ArkUI';
 
 const DOMAIN: number = 0xA001;
 const TAG: string = 'HapInstall';
@@ -45,6 +46,7 @@ const PERM_LIST_MAX_HEIGHT: number = 260;
 @Component
 struct HapInstallPage {
   @LocalStorageProp('hapUri') hapUri: string = '';
+  @LocalStorageProp('installDisabled') installDisabled: boolean = false;
   @State installState: InstallState = 'confirm';
   @State displayName: string = '';
   @State bundleName: string = '';
@@ -58,6 +60,19 @@ struct HapInstallPage {
   private tempDir: string = '';
 
   aboutToAppear(): void {
+    if (this.installDisabled) {
+      // 系统禁止安装，弹出提示后退出
+      promptAction.showDialog({
+        title: '提示',
+        message: '不支持安装应用程序',
+        buttons: [
+          { text: '确定', color: '#007DFF' }
+        ]
+      }).then(() => {
+        this.closeSelf();
+      });
+      return;
+    }
     this.parseHap();
   }
 
@@ -212,32 +227,35 @@ struct HapInstallPage {
 
   build() {
     Stack() {
-      // 底层：浅灰背景（横屏两边留白区域）
-      Column()
+      if (!this.installDisabled) {
+        // 底层：浅灰背景（横屏两边留白区域）
+        Column()
+          .width('100%')
+          .height('100%')
+          .backgroundColor('#F2F3F5')
+
+        // 居中白色卡片
+        Column() {
+          if (this.installState === 'confirm') {
+            this.buildConfirm();
+          } else if (this.installState === 'installing') {
+            this.buildInstalling();
+          } else if (this.installState === 'success') {
+            this.buildSuccess();
+          } else {
+            this.buildFailed();
+          }
+        }
         .width('100%')
         .height('100%')
-        .backgroundColor('#F2F3F5')
-
-      // 居中白色卡片
-      Column() {
-        if (this.installState === 'confirm') {
-          this.buildConfirm();
-        } else if (this.installState === 'installing') {
-          this.buildInstalling();
-        } else if (this.installState === 'success') {
-          this.buildSuccess();
-        } else {
-          this.buildFailed();
-        }
+        .justifyContent(FlexAlign.Center)
+        .alignItems(HorizontalAlign.Center)
+        .padding({ left: 24, right: 24 })
       }
-      .width('100%')
-      .height('100%')
-      .justifyContent(FlexAlign.Center)
-      .alignItems(HorizontalAlign.Center)
-      .padding({ left: 24, right: 24 })
     }
     .width('100%')
     .height('100%')
+    .backgroundColor('#F2F3F5')
   }
 
   @Builder

@@ -46,16 +46,16 @@
             "actions": [
               "ohos.want.action.viewData"
             ],
-            "uris": [
-              {
-                "scheme": "file",
-                "utd": "openharmony.hap"
-              },
-              {
-                "scheme": "file",
-                "type": "application/vnd.openharmony.package-archive"
-              }
-            ]
+//            "uris": [
+//              {
+//                "scheme": "file",
+//                "utd": "openharmony.hap"
+//              },
+//              {
+//                "scheme": "file",
+//                "type": "application/vnd.openharmony.package-archive"
+//              }
+//            ]
           }
         ]
       }
