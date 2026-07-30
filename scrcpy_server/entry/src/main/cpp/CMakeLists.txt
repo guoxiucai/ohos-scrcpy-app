@@ -21,4 +21,5 @@ target_link_libraries(scrcpy_capture PUBLIC
     libnative_window.so
     libpixelmap.so
     libimage_packer.so
+    libdeviceinfo_ndk.z.so
     libhilog_ndk.z.so)
