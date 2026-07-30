@@ -98,14 +98,7 @@ public:
             cfg_ = cfg;
             stopping_.store(false);
             if (StartH264EncoderLocked()) {
-                auto startCaptureRet =
-                    OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
-                restarted = startCaptureRet == AV_SCREEN_CAPTURE_ERR_OK;
-                if (!restarted) {
-                    OH_LOG_WARN(LOG_APP,
-                                "RestartEncoder: bind new surface failed: %{public}d",
-                                startCaptureRet);
-                }
+                restarted = StartH264CaptureWithSurfaceLocked();
             }
         }
         if (restarted) {
@@ -127,7 +120,7 @@ public:
             if (paused) {
                 OH_AVScreenCapture_StopScreenCapture(capture_);
             } else {
-                OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
+                StartH264CaptureWithSurfaceLocked();
             }
         }
     }
@@ -139,6 +132,8 @@ private:
     bool TryStartH264();
     bool StartH264EncoderLocked();
     bool StartH264ScreenCaptureLocked();
+    bool StartH264CaptureWithSurfaceLocked();
+    void ApplyCaptureMaxFrameRateLocked();
     bool StartRaw();
     void TeardownH264Locked();
 
@@ -402,12 +397,35 @@ bool CaptureSession::StartH264ScreenCaptureLocked() {
         OH_LOG_WARN(LOG_APP, "screen capture init failed: %{public}d", err);
         return false;
     }
-    err = OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
+    return StartH264CaptureWithSurfaceLocked();
+}
+
+bool CaptureSession::StartH264CaptureWithSurfaceLocked() {
+    auto err = OH_AVScreenCapture_StartScreenCaptureWithSurface(capture_, window_);
     if (err != AV_SCREEN_CAPTURE_ERR_OK) {
         OH_LOG_WARN(LOG_APP, "start capture(surface) failed: %{public}d", err);
         return false;
     }
+    ApplyCaptureMaxFrameRateLocked();
     return true;
+}
+
+void CaptureSession::ApplyCaptureMaxFrameRateLocked() {
+    if (capture_ == nullptr || cfg_.frameRate <= 0) {
+        OH_LOG_WARN(LOG_APP,
+                    "skip invalid capture max frame rate: capture=%p fps=%{public}d",
+                    static_cast<void *>(capture_), cfg_.frameRate);
+        return;
+    }
+    auto err = OH_AVScreenCapture_SetMaxVideoFrameRate(capture_, cfg_.frameRate);
+    if (err == AV_SCREEN_CAPTURE_ERR_OK) {
+        OH_LOG_INFO(LOG_APP, "capture max frame rate set to %{public}d", cfg_.frameRate);
+    } else {
+        // 部分设备当前可能尚未真正支持该接口；不让限帧失败影响已有视频链路。
+        OH_LOG_WARN(LOG_APP,
+                    "set capture max frame rate %{public}d failed: %{public}d",
+                    cfg_.frameRate, err);
+    }
 }
 
 bool CaptureSession::StartRaw() {
@@ -451,6 +469,7 @@ bool CaptureSession::StartRaw() {
         OH_LOG_ERROR(LOG_APP, "RAW capture start failed: %{public}d", err);
         return false;
     }
+    ApplyCaptureMaxFrameRateLocked();
     return true;
 }
 
