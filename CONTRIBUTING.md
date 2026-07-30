@@ -15,8 +15,8 @@
 
 | 工具 | 版本 | 说明 |
 |------|------|------|
-| Flutter | 3.22.1+ | 桌面应用框架 |
-| Dart | 3.4+ | 随 Flutter 安装 |
+| Flutter | 3.41.9 | 桌面应用框架 |
+| Dart | 3.11+ | 随 Flutter 3.41.9 安装 |
 | Xcode | 15+（macOS） | macOS 构建 |
 | Visual Studio | 2022+（Windows） | Windows 构建，需 C++ 桌面开发工作负载 |
 

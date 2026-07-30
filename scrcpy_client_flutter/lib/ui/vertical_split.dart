@@ -60,7 +60,7 @@ class _VerticalSplitState extends State<VerticalSplit> {
                   duration: const Duration(milliseconds: 150),
                   height: 4,
                   color:
-                      active ? AppColors.accent.withOpacity(0.6) : AppColors.divider,
+                      active ? AppColors.accent.withValues(alpha: 0.6) : AppColors.divider,
                 ),
               ),
             ),

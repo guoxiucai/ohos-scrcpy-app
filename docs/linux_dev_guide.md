@@ -3,6 +3,9 @@
 > 适用项目：`scrcpy_client_flutter`  
 > 适用系统：Ubuntu 22.04 LTS / 24.04 LTS（x86_64）  
 > 其他基于 Debian 的发行版（Debian 12、Linux Mint 21）基本兼容，包名可能略有差异。
+>
+> 当前状态：Linux Runner 与原生媒体能力尚未纳入主工程，本指南是后续适配占位，
+> 尚未按 Flutter 3.41.9 完成构建和功能验证。
 
 ---
 
@@ -12,7 +15,7 @@
 
 | 工具 | 用途 |
 |------|------|
-| Flutter SDK（官方 3.22.1 stable） | 编译客户端 |
+| Flutter SDK（官方 3.41.9 stable） | 编译客户端 |
 | GCC / Clang + CMake + Ninja | C++ 插件构建 |
 | GTK3 / pkg-config | Flutter Linux 运行时依赖 |
 | libavcodec / libswscale | H264 软解 |
@@ -49,10 +52,10 @@ Ubuntu 24.04 上 `libjpeg-turbo8-dev` 改名为 `libjpeg-turbo-dev`，按提示�
 ### 1.3 安装 Flutter SDK
 
 ```bash
-# 下载 stable 3.22.1（从 flutter.dev 归档页获取链接）
+# 下载 stable 3.41.9（从 flutter.dev 归档页获取链接）
 cd ~
-wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.22.1-stable.tar.xz
-tar xf flutter_linux_3.22.1-stable.tar.xz
+wget https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.41.9-stable.tar.xz
+tar xf flutter_linux_3.41.9-stable.tar.xz
 
 # 加入 PATH（写入 ~/.bashrc 或 ~/.zshrc）
 echo 'export PATH="$HOME/flutter/bin:$PATH"' >> ~/.bashrc
@@ -63,7 +66,7 @@ flutter doctor -v
 ```
 
 `flutter doctor` 期望结果：
-- [x] Flutter（3.22.1）
+- [x] Flutter（3.41.9）
 - [x] Linux toolchain（clang + cmake + ninja）
 - [ ] Android Studio（不需要，跳过）
 - [x] Connected device

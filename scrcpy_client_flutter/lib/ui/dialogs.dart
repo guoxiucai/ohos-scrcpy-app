@@ -180,7 +180,7 @@ class _BaseDialog extends StatelessWidget {
                     width: 28,
                     height: 28,
                     decoration: BoxDecoration(
-                      color: iconColor.withOpacity(0.15),
+                      color: iconColor.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(AppRadius.sm),
                     ),
                     alignment: Alignment.center,

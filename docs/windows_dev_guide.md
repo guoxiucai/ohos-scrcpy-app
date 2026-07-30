@@ -1,6 +1,6 @@
 # Windows 端开发指南：环境准备 / 调试 / 构建 / 签名
 
-> 适用项目：`scrcpy_client_flutter`（Flutter 3.22.1-ohos-1.0.4）  
+> 适用项目：`scrcpy_client_flutter`（Flutter 3.41.9，客户端 1.0.3）
 > 适用系统：Windows 10 1809+ / Windows 11（x64）
 
 ---
@@ -11,19 +11,19 @@
 
 | 工具 | 用途 | 获取方式 |
 |------|------|----------|
-| Flutter SDK（官方 3.22.1） | 编译客户端 | 见 1.2 |
+| Flutter SDK（官方 3.41.9） | 编译客户端 | 见 1.2 |
 | Build Tools for Visual Studio 2022 | MSVC 编译器 + Windows SDK（命令行，无 IDE） | 见 1.3 |
 | Git | 源码管理 | https://git-scm.com/download/win |
 | HDC（鸿蒙设备调试） | 设备连接 + 端口转发 | 随 DevEco Studio 一起安装，加入 PATH |
 
 ### 1.2 安装 Flutter（官方渠道）
 
-Windows 端开发基于 Flutter 3.22.1。
+Windows 端开发基于官方 Flutter 3.41.9，使用其内置的 Dart 3.11 系列。
 
 ```powershell
 # 解压到本地（示例路径，可自定义）
-# 从 https://docs.flutter.dev/release/archive 下载 flutter_windows_3.22.1-stable.zip
-Expand-Archive flutter_windows_3.22.1-stable.zip C:\flutter
+# 从 https://docs.flutter.dev/release/archive 下载 flutter_windows_3.41.9-stable.zip
+Expand-Archive flutter_windows_3.41.9-stable.zip C:\flutter
 
 # 加入环境变量（PowerShell 配置文件或系统变量）
 $env:PATH = "C:\flutter\bin;$env:PATH"
@@ -33,7 +33,7 @@ flutter doctor -v
 ```
 
 `flutter doctor` 检查清单：
-- [x] Flutter（版本 3.22.1）
+- [x] Flutter（版本 3.41.9）
 - [x] Windows Version（≥ 10.0.17763）
 - [x] Visual Studio（检测到 Build Tools 也会通过）
 - [ ] Android Studio / Xcode（不需要，跳过）
@@ -185,10 +185,10 @@ $signtool = "C:\Program Files (x86)\Windows Kits\10\bin\10.0.22621.0\x64\signtoo
     /p "your-password" `
     /tr http://timestamp.digicert.com `
     /td sha256 /fd sha256 `
-    "build\dist\HongJing-Setup-1.0.0.exe"
+    "build\dist\HongJing-Setup-1.0.3.exe"
 
 # 验证签名
-& $signtool verify /pa "build\dist\HongJing-Setup-1.0.0.exe"
+& $signtool verify /pa "build\dist\HongJing-Setup-1.0.3.exe"
 ```
 
 ### 5.3 CI 自动签名（通过打包脚本）
@@ -241,7 +241,7 @@ build\
       *.dll                    # 依赖 dll（VC runtime 等）
       data\                    # flutter assets
   dist\
-    HongJing-Setup-1.0.0.exe  # package_win.ps1 输出的安装包
+    HongJing-Setup-1.0.3.exe  # package_win.ps1 输出的安装包
 ```
 
 > `Release\` 目录下的所有文件都需要一起发布，`package_win.ps1` 已通过 Inno Setup 将其打包进 `Setup.exe`，用户安装后无需关心 dll 依赖。

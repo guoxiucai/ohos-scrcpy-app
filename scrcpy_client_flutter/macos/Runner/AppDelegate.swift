@@ -2,7 +2,7 @@ import Cocoa
 import Darwin
 import FlutterMacOS
 
-@NSApplicationMain
+@main
 class AppDelegate: FlutterAppDelegate {
   override init() {
     // Finder 双击启动时，进程的 stdout/stderr 接到 launchd pipe，用户会话很早关闭读端；
@@ -13,6 +13,10 @@ class AppDelegate: FlutterAppDelegate {
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+    return true
+  }
+
+  override func applicationSupportsSecureRestorableState(_ app: NSApplication) -> Bool {
     return true
   }
 }

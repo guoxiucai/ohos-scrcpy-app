@@ -4,7 +4,7 @@ Vendored from `xterm` 4.0.0 (pub.dev) with one local patch:
 
 - `lib/src/ui/shortcut/shortcuts.dart`: added `default:` branch to the
   `switch (defaultTargetPlatform)` so it compiles against OpenHarmony's
-  Flutter fork (`flutter-3.22.1-ohos-1.0.4`), which adds an extra
+  Flutter fork (`Flutter 3.41.10-ohos-1.0.0`), which adds an extra
   `TargetPlatform.ohos` enum value that exhaustive switches must handle.
 
 Why vendor instead of `dependency_overrides`:

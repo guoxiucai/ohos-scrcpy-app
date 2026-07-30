@@ -2,6 +2,14 @@
 
 所有显著变更将记录在此文件中。格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/)。
 
+## [1.0.3] - 2026-07-30
+
+### Changed
+
+- 客户端 Flutter 基线升级至官方 3.41.9，Dart 基线升级至 3.11
+- 客户端版本升级至 1.0.3，服务端版本保持 1.0.2
+- macOS 最低部署版本随 Flutter 3.41 升级至 10.15
+
 ## [1.0.2] - 2026-07-25
 
 ### Added

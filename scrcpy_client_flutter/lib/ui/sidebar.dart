@@ -793,7 +793,7 @@ class _BundleRowState extends State<_BundleRow> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
           color:
-              _hover ? AppColors.accent.withOpacity(0.12) : Colors.transparent,
+              _hover ? AppColors.accent.withValues(alpha: 0.12) : Colors.transparent,
           child: Text(
             widget.bundle,
             maxLines: 1,
@@ -915,14 +915,14 @@ class _CtlBtnState extends State<_CtlBtn> {
     final bg = !enabled
         ? AppColors.bg
         : _pressed
-            ? AppColors.accent.withOpacity(0.15)
+            ? AppColors.accent.withValues(alpha: 0.15)
             : _hover
                 ? AppColors.elevated
                 : AppColors.bg;
     final border = !enabled
         ? AppColors.border
         : _hover || _pressed
-            ? AppColors.accent.withOpacity(0.6)
+            ? AppColors.accent.withValues(alpha: 0.6)
             : AppColors.borderStrong;
     final fg = !enabled
         ? AppColors.textFaint

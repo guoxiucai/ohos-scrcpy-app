@@ -141,9 +141,9 @@ class _DividerGutter extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final barColor = active
-        ? AppColors.accent.withOpacity(0.6)
+        ? AppColors.accent.withValues(alpha: 0.6)
         : hovering
-            ? AppColors.accent.withOpacity(0.3)
+            ? AppColors.accent.withValues(alpha: 0.3)
             : AppColors.divider;
 
     return MouseRegion(

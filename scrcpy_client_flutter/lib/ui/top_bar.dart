@@ -236,8 +236,8 @@ class _StatusPillState extends State<_StatusPill> with SingleTickerProviderState
       height: 24,
       padding: const EdgeInsets.symmetric(horizontal: 8),
       decoration: BoxDecoration(
-        color: widget.color.withOpacity(0.10),
-        border: Border.all(color: widget.color.withOpacity(0.35)),
+        color: widget.color.withValues(alpha: 0.10),
+        border: Border.all(color: widget.color.withValues(alpha: 0.35)),
         borderRadius: BorderRadius.circular(AppRadius.sm),
       ),
       child: Row(
@@ -247,10 +247,10 @@ class _StatusPillState extends State<_StatusPill> with SingleTickerProviderState
             builder: (_, __) => Container(
               width: 7, height: 7,
               decoration: BoxDecoration(
-                color: widget.color.withOpacity(widget.blinking ? (0.4 + 0.6 * _ctrl.value) : 1.0),
+                color: widget.color.withValues(alpha: widget.blinking ? (0.4 + 0.6 * _ctrl.value) : 1.0),
                 shape: BoxShape.circle,
                 boxShadow: [
-                  BoxShadow(color: widget.color.withOpacity(0.6), blurRadius: 6),
+                  BoxShadow(color: widget.color.withValues(alpha: 0.6), blurRadius: 6),
                 ],
               ),
             ),

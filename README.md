@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
-  <img src="https://img.shields.io/badge/version-1.0.2-brightgreen.svg" alt="Version 1.0.2">
+  <img src="https://img.shields.io/badge/version-1.0.3-brightgreen.svg" alt="Version 1.0.3">
   <img src="https://img.shields.io/badge/client-macOS%20%7C%20Windows-lightgrey.svg" alt="Client: macOS and Windows">
   <img src="https://img.shields.io/badge/device-OpenHarmony-orange.svg" alt="Device: OpenHarmony">
 </p>
@@ -28,7 +28,7 @@
 
 鸿镜由运行在 OpenHarmony 设备上的系统 HAP 和运行在 macOS/Windows 上的 Flutter 桌面客户端组成。客户端通过 `hdc fport` 与设备端服务建立本地 TCP 通道，在同一连接中传输 H.264 视频流、设备状态、心跳和控制消息。
 
-当前版本为 **1.0.2**。macOS 与 Windows 客户端已经支持投屏、控制、MP4 录制和 PNG 截图；Linux 客户端尚在规划中。
+当前客户端版本为 **1.0.3**，设备端服务版本为 **1.0.2**。macOS 与 Windows 客户端已经支持投屏、控制、MP4 录制和 PNG 截图；Linux 客户端尚在规划中。
 
 > 服务端使用屏幕采集和输入注入等系统能力，需要 Full SDK、系统应用签名以及设备权限白名单。普通应用签名无法直接使用全部功能。
 
@@ -187,8 +187,8 @@ Windows 环境可以通过 DevEco Studio 构建，或将上述 Node 与 Hvigor �
 
 基础环境：
 
-- Flutter 3.22.1 或更高版本
-- Dart 3.4 或更高版本
+- Flutter 3.41.9
+- Dart 3.11 或更高版本（随 Flutter 3.41.9 安装）
 - macOS：Xcode 15 或更高版本
 - Windows：Visual Studio 2022，安装“使用 C++ 的桌面开发”工作负载
 

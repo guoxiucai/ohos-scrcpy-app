@@ -64,7 +64,7 @@ class _Header extends StatelessWidget {
             decoration: BoxDecoration(
               color: dotColor,
               shape: BoxShape.circle,
-              boxShadow: [BoxShadow(color: dotColor.withOpacity(0.6), blurRadius: 6)],
+              boxShadow: [BoxShadow(color: dotColor.withValues(alpha: 0.6), blurRadius: 6)],
             ),
           ),
           const SizedBox(width: 8),
