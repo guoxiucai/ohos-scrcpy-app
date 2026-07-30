@@ -175,11 +175,37 @@
 
 
 
+# 升级flutter版本至3.41.9 
+## 已知前提
+- 本地mac环境已经升级为 Flutter 3.41.10-ohos-1.0.0， 这个是基于flutter官方3.41.9版本适配了openharmony平台的版本，同时支持桌面端（mac, windows, linux，以及HarmonyOS PC设备），移动端（iOS，Android和华为HarmonyOS设备），以及有一些OpenHarmony设备
+- PC端届时会使用flutter官方3.41.9的版本编译
+- 当前mac已经连接了一台OpenHarmony设备用于验证
+
+## 其他需求
+- 只升级flutter版本，不改动功能
+- 升级后，客户端统一升级版本号为1.0.3，服务端不变
+- 方案设计上需要考虑兼容mac,window和linux三平台
+- 先输出设计文档(和我确认后再开始实现)，落库docs目录。当前版本优先实现macos和windows平台支持，linux平台留占位
+
+
+## Loop
+1. 输出设计文档，然后自行编译客户端验证完此需求，我只要结果。
+
+最终目标：
+1. 当前mac环境上编译无误
+1. 客户端已有的功能规格功能回归正常，mac验证完后输出windows平台的指导文档（我需要到另外一台win设备上继续）
+3. 如遇到问题，重试6次后如果还不能解决，暂停下来，和我沟通
+
+
+
+
 
 # Todo Roadmap
- - 客户端升级Flutter版本至3.41.9  --todo
+ - 客户端升级Flutter版本至3.41.9  --已完成
  - 支持键盘实时输入（需搭配系统输入法应用） --已完成
- - 发送文本功能实现（英文支持，中文不支持） -- todo
+ - 发送文本功能实现（英文支持） --已完成
+ - 发送文本功能实现（中文支持） -- todo
+ - 1.0.1 windows验证， windows安装包更新 --已完成
+ - 1.0.2 windows验证， windows安装包更新 --已完成
  - cvte定制: xbug日志获取, 物理6按键模拟 --todo
  - cvte定制: 客户端OAT能力支持（启动时检测升级） --todo
- - 1.0.1 windows验证， windows安装包更新 --已完成
