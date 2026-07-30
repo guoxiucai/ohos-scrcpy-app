@@ -41,7 +41,6 @@ constexpr int32_t kCodecJpeg = 2;
 // JPEG 体积小，回到接近正常的帧率；RAW 兜底走 6fps 保护带宽。
 constexpr int32_t kJpegFrameRate = 10;
 constexpr int32_t kRawFrameRate = 6;
-constexpr int32_t kEncFrameRate = 20;
 
 class CaptureSession {
 public:
@@ -215,8 +214,7 @@ bool CaptureSession::Start(const CaptureConfig &cfg) {
 
     if (TryStartH264()) {
         mode_ = kCodecH264;
-        cfg_.frameRate = kEncFrameRate;
-        OH_LOG_INFO(LOG_APP, "started in H264 mode");
+        OH_LOG_INFO(LOG_APP, "started in H264 mode at %{public}d fps", cfg_.frameRate);
         return true;
     }
     // H264 启动失败：先打 stopping 防止回调访问，安全销毁，再恢复。
