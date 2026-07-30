@@ -35,15 +35,17 @@ if (-Not (Test-Path $MainExe)) {
 }
 
 # 内嵌 hdc.exe 及其依赖库到 tools/ 子目录
-$hdcSrc = "bundled_tools\hdc.exe"
+$hdcSrc = Join-Path $PSScriptRoot "..\bundled_tools\hdc.exe"
+if ($hdcSrc) { $hdcSrc = [System.IO.Path]::GetFullPath($hdcSrc) }
 $toolsDir = Join-Path $BUILD "tools"
-if (Test-Path $hdcSrc) {
+if ($hdcSrc -and (Test-Path $hdcSrc)) {
   New-Item -ItemType Directory -Force -Path $toolsDir | Out-Null
   Copy-Item $hdcSrc $toolsDir
   Write-Host "  [bundled] hdc.exe -> $toolsDir"
   # hdc.exe 依赖 libusb_shared.dll
-  $dllSrc = "bundled_tools\libusb_shared.dll"
-  if (Test-Path $dllSrc) {
+  $dllSrc = Join-Path $PSScriptRoot "..\bundled_tools\libusb_shared.dll"
+  if ($dllSrc) { $dllSrc = [System.IO.Path]::GetFullPath($dllSrc) }
+  if ($dllSrc -and (Test-Path $dllSrc)) {
     Copy-Item $dllSrc $toolsDir
     Write-Host "  [bundled] libusb_shared.dll -> $toolsDir"
   }
