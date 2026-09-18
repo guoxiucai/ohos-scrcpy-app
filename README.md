@@ -208,7 +208,7 @@ flutter run -d macos
 flutter build macos --release
 ```
 
-Windows：
+Windows（在 Windows 环境中执行）：
 
 ```powershell
 flutter run -d windows
