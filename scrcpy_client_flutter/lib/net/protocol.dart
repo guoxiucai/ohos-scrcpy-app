@@ -25,6 +25,7 @@ class ControlSubType {
   static const int brightnessUp = 0x22;
   static const int brightnessDown = 0x23;
   static const int listApps = 0x30;
+  static const int getDisplayInfo = 0x31;
   static const int pauseEncoder = 0x40;
   static const int resumeEncoder = 0x41;
   static const int changeVideoParams = 0x42;
@@ -33,7 +34,38 @@ class ControlSubType {
 }
 
 class DeviceStatusSubType {
+  static const int displayInfo = 0x01;
   static const int appList = 0x10;
+}
+
+class DisplayInfo {
+  final int logicalWidth;
+  final int logicalHeight;
+  final int rotation;
+
+  const DisplayInfo({
+    required this.logicalWidth,
+    required this.logicalHeight,
+    required this.rotation,
+  });
+
+  static DisplayInfo parse(Uint8List body) {
+    if (body.length != 9) {
+      throw const FormatException('显示信息长度必须为 9');
+    }
+    final view = ByteData.sublistView(body);
+    final width = view.getUint32(0, Endian.big);
+    final height = view.getUint32(4, Endian.big);
+    final rotation = view.getUint8(8);
+    if (width <= 0 || height <= 0 || rotation > 3) {
+      throw const FormatException('显示信息字段非法');
+    }
+    return DisplayInfo(
+      logicalWidth: width,
+      logicalHeight: height,
+      rotation: rotation,
+    );
+  }
 }
 
 /// 应用条目（设备端可卸载应用）。

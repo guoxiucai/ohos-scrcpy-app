@@ -1,0 +1,132 @@
+name: 构建 Windows 客户端
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: scrcpy_client_flutter
+
+jobs:
+  build-windows:
+    name: 构建 Windows 安装包
+    runs-on: windows-2022
+    timeout-minutes: 60
+
+    steps:
+      - name: 检出源码
+        uses: actions/checkout@v4
+
+      - name: 安装 Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.9'
+          channel: stable
+          cache: true
+
+      - name: 启用 Windows 桌面支持
+        shell: pwsh
+        run: flutter config --enable-windows-desktop
+
+      - name: 获取依赖
+        shell: pwsh
+        run: flutter pub get
+
+      - name: 静态检查
+        shell: pwsh
+        run: flutter analyze
+
+      - name: 运行测试
+        shell: pwsh
+        run: flutter test
+
+      - name: 确保 Inno Setup 6 可用
+        shell: pwsh
+        run: |
+          $programFilesX86 = [System.Environment]::GetEnvironmentVariable('ProgramFiles(x86)')
+          $candidates = @(
+            "$programFilesX86\Inno Setup 6\ISCC.exe"
+            "$env:ProgramFiles\Inno Setup 6\ISCC.exe"
+          )
+
+          function Find-Iscc {
+            $command = Get-Command ISCC.exe -ErrorAction SilentlyContinue
+            if ($command) {
+              return $command.Source
+            }
+            foreach ($candidate in $candidates) {
+              if (Test-Path $candidate) {
+                return $candidate
+              }
+            }
+            return $null
+          }
+
+          $iscc = Find-Iscc
+          if (-not $iscc) {
+            choco install innosetup --yes --no-progress
+            if ($LASTEXITCODE -ne 0) {
+              throw "Inno Setup 安装失败，退出码: $LASTEXITCODE"
+            }
+            $iscc = Find-Iscc
+          }
+
+          if (-not $iscc) {
+            throw '未找到 Inno Setup 6 的 ISCC.exe'
+          }
+
+          Split-Path -Parent $iscc | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $version = (Get-Item $iscc).VersionInfo.ProductVersion
+          Write-Host "使用 Inno Setup: $iscc ($version)"
+
+          $languageUrl = 'https://raw.githubusercontent.com/jrsoftware/issrc/c05512b1773ce81bf845c3d2e891f74452cf6f23/Files/Languages/ChineseSimplified.isl'
+          $languagePath = Join-Path $env:RUNNER_TEMP 'ChineseSimplified.isl'
+          Invoke-WebRequest -Uri $languageUrl -OutFile $languagePath
+          $expectedHash = 'e0b0b350e2245f3c5e65586dfe43d574f6e7f06f2261149aba284954b3fc9a8d'
+          $actualHash = (Get-FileHash -Path $languagePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actualHash -ne $expectedHash) {
+            throw "Inno Setup 简体中文语言文件校验失败: $actualHash"
+          }
+          "INNO_CHINESE_SIMPLIFIED_ISL=$languagePath" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: 读取应用版本
+        id: app
+        shell: pwsh
+        run: |
+          $versionLine = Get-Content pubspec.yaml |
+            Where-Object { $_ -match '^version:' } |
+            Select-Object -First 1
+          if (-not $versionLine) {
+            throw 'pubspec.yaml 缺少 version 字段'
+          }
+          $version = (($versionLine -replace '^version:\s*', '') -replace '\+.*$', '').Trim()
+          if (-not $version) {
+            throw '无法从 pubspec.yaml 读取应用版本'
+          }
+          "version=$version" | Out-File -FilePath $env:GITHUB_OUTPUT -Encoding utf8 -Append
+
+      - name: 打包 Windows 安装程序
+        shell: pwsh
+        env:
+          WIN_PFX_BASE64: ${{ secrets.WIN_PFX_BASE64 }}
+          WIN_PFX_PASSWORD: ${{ secrets.WIN_PFX_PASSWORD }}
+        run: powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts\package_win.ps1
+
+      - name: 上传 Windows 安装包
+        uses: actions/upload-artifact@v4
+        with:
+          name: HongJing-Windows-${{ steps.app.outputs.version }}
+          path: scrcpy_client_flutter/build/dist/HongJing-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 14

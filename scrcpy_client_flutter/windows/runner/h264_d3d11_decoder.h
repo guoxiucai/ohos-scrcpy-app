@@ -46,7 +46,10 @@ class H264D3D11Decoder : public IDecoder {
   bool SetupD3D11(std::string* err);
   bool SetupHardwareMFT(std::string* err);
   bool SetupVideoProcessor();
-  bool EnsureOutputTexture(UINT width, UINT height);
+  bool EnsureOutputTexture(UINT input_width,
+                           UINT input_height,
+                           UINT output_width,
+                           UINT output_height);
 
   // SPS/PPS 缓存
   std::vector<uint8_t> sps_nal_;
@@ -74,6 +77,8 @@ class H264D3D11Decoder : public IDecoder {
   // 输出纹理 (BGRA, SHARED)
   ComPtr<ID3D11Texture2D> output_tex_;
   HANDLE shared_handle_ = nullptr;
+  UINT processor_input_width_ = 0;
+  UINT processor_input_height_ = 0;
   UINT out_width_ = 0;
   UINT out_height_ = 0;
   std::mutex frame_mu_;

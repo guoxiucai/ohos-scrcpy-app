@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../decoder/video_decoder.dart';
+import '../display/display_geometry.dart';
 import '../hdc/device.dart';
 import '../hdc/hdc_client.dart';
 import '../net/protocol.dart';
@@ -34,7 +35,9 @@ class MediaNotice {
 }
 
 class AppState extends ChangeNotifier {
-  final HdcClient hdc = HdcClient();
+  AppState({HdcClient? hdc}) : hdc = hdc ?? HdcClient();
+
+  final HdcClient hdc;
   final StreamClient stream = StreamClient();
   late final VideoDecoder decoder = VideoDecoder()
     ..onTextureReady = notifyListeners
@@ -84,6 +87,8 @@ class AppState extends ChangeNotifier {
 
   int? localPort;
   VideoConfig? videoConfig;
+  DisplayInfo? displayInfo;
+  bool _connectionDefaultsApplied = false;
   int frames = 0;
   DateTime? firstFrameAt;
   // 实时 FPS（基于 1Hz 采样窗口），未连接 / 无新帧时为 0
@@ -101,6 +106,7 @@ class AppState extends ChangeNotifier {
   static const _prefKeyFps = 'video_fps';
   SharedPreferences? _prefs;
   bool _prefsLoaded = false;
+  bool _hasSavedVideoParams = false;
 
   /// 初始化 SharedPreferences（应在 app 启动时调用一次）
   Future<void> initPrefs() async {
@@ -109,13 +115,16 @@ class AppState extends ChangeNotifier {
       _prefsLoaded = true;
       final savedMaxShort = _prefs!.getInt(_prefKeyMaxShort);
       final savedFps = _prefs!.getInt(_prefKeyFps);
+      _hasSavedVideoParams = savedMaxShort != null || savedFps != null;
       if (savedMaxShort != null) targetMaxShort = savedMaxShort;
       if (savedFps != null) targetFps = savedFps;
       // 码率根据保存的分辨率联动
-      targetBitrate =
-          targetMaxShort <= 1080 ? 4 * 1000 * 1000 : 6 * 1000 * 1000;
+      targetBitrate = targetMaxShort <= 1080
+          ? 4 * 1000 * 1000
+          : 6 * 1000 * 1000;
       debugPrint(
-          '[prefs] loaded maxShort=$targetMaxShort, fps=$targetFps, bitrate=$targetBitrate');
+        '[prefs] loaded maxShort=$targetMaxShort, fps=$targetFps, bitrate=$targetBitrate',
+      );
     } catch (e) {
       debugPrint('[prefs] init failed: $e');
     }
@@ -124,6 +133,7 @@ class AppState extends ChangeNotifier {
   /// 保存用户手动选择的视频参数
   void _saveVideoPrefs() {
     if (!_prefsLoaded || _prefs == null) return;
+    _hasSavedVideoParams = true;
     _prefs!.setInt(_prefKeyMaxShort, targetMaxShort);
     _prefs!.setInt(_prefKeyFps, targetFps);
     debugPrint('[prefs] saved maxShort=$targetMaxShort, fps=$targetFps');
@@ -169,6 +179,8 @@ class AppState extends ChangeNotifier {
     final old = selectedDevice?.serial;
     if (d.serial != old) {
       await _finishRecordingForLifecycle();
+      displayInfo = null;
+      _connectionDefaultsApplied = false;
     }
     selectedDevice = d;
     apps = [];
@@ -220,47 +232,97 @@ class AppState extends ChangeNotifier {
     }
     // 清理上一次残留的端口转发（error 状态重连 / 异常断开）
     await _cleanupForward();
-    _setState(ConnState.connecting, '正在端口转发…');
-    try {
-      final lp = await hdc.forwardPort(dev.serial, kDevicePort);
-      localPort = lp;
-      _setState(ConnState.connecting, '正在连接 127.0.0.1:$lp …');
-      await stream.connect('127.0.0.1', lp);
-      _sub = stream.packets.listen((p) {
-        _packetChain = _packetChain.then((_) => _onPacket(p));
-      }, onError: (e) {
-        _setState(ConnState.error, '连接错误: $e');
-        disconnect();
-      });
-      _setState(ConnState.connected, '已连接，等待视频流…');
-      _startHeartbeat();
-      _startStatsTicker();
-      // 根据连接类型设置默认视频参数并下发
-      final isWifi = dev.connection == 'TCP';
-      // WiFi: 2160p / 6Mbps / 15fps；USB: 2160p / 12Mbps / 15fps
-      targetMaxShort = 2160;
-      targetBitrate = isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000;
-      targetFps = 15;
-      // 若用户有手动保存的偏好，优先使用保存值
-      if (_prefsLoaded && _prefs != null) {
-        final savedMaxShort = _prefs!.getInt(_prefKeyMaxShort);
-        final savedFps = _prefs!.getInt(_prefKeyFps);
-        if (savedMaxShort != null) {
-          targetMaxShort = savedMaxShort;
-          targetBitrate = savedMaxShort <= 1080
-              ? 4 * 1000 * 1000
-              : (isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000);
+    displayInfo = null;
+    _connectionDefaultsApplied = false;
+    Object? lastError;
+    for (var attempt = 1; attempt <= 3; attempt++) {
+      if (_disposed) return;
+      _setState(ConnState.connecting, '正在验证设备服务 ($attempt/3)…');
+      final handshake = Completer<Object?>();
+      final pending = <Packet>[];
+      var verified = false;
+      try {
+        final lp = await hdc.forwardPort(dev.serial, kDevicePort);
+        localPort = lp;
+        final challenge = Uint8List(8);
+        ByteData.sublistView(
+          challenge,
+        ).setUint64(0, DateTime.now().microsecondsSinceEpoch, Endian.big);
+        _sub = stream.packets.listen(
+          (p) {
+            if (!verified) {
+              pending.add(p);
+              if (p.type == PacketType.heartbeat &&
+                  listEquals(p.payload, challenge) &&
+                  !handshake.isCompleted) {
+                handshake.complete(null);
+              }
+              return;
+            }
+            _packetChain = _packetChain.then((_) => _onPacket(p));
+          },
+          onError: (Object e) {
+            if (!verified) {
+              if (!handshake.isCompleted) handshake.complete(e);
+            } else if (connState == ConnState.connected) {
+              _handleStreamError(e);
+            }
+          },
+        );
+        await stream.connect('127.0.0.1', lp);
+        stream.send(PacketType.heartbeat, challenge);
+        final failure = await handshake.future.timeout(
+          const Duration(seconds: 5),
+          onTimeout: () => TimeoutException('设备服务心跳未响应'),
+        );
+        if (failure != null) throw failure;
+        if (_disposed || !stream.connected) {
+          throw const SocketException('设备视频连接已关闭');
         }
-        if (savedFps != null) targetFps = savedFps;
+        verified = true;
+        for (final packet in pending) {
+          _packetChain = _packetChain.then((_) => _onPacket(packet));
+        }
+        _setState(ConnState.connected, '已连接，等待视频流…');
+        _startHeartbeat();
+        _startStatsTicker();
+        requestDisplayInfo();
+        requestAppList();
+        // 显式保存的偏好优先于连接类型的默认策略。
+        final isWifi = dev.connection == 'TCP';
+        if (_hasSavedVideoParams && _prefs != null) {
+          final savedMaxShort = _prefs!.getInt(_prefKeyMaxShort);
+          final savedFps = _prefs!.getInt(_prefKeyFps);
+          if (savedMaxShort != null) {
+            targetMaxShort = savedMaxShort;
+            targetBitrate = savedMaxShort <= 1080
+                ? 4 * 1000 * 1000
+                : (isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000);
+          }
+          if (savedFps != null) targetFps = savedFps;
+          _sendVideoParams();
+        }
+        return;
+      } catch (e) {
+        debugPrint('[connect] attempt=$attempt failure=$e');
+        lastError = e;
+        await _sub?.cancel();
+        _sub = null;
+        await stream.disconnect();
+        await _cleanupForward();
+        if (_disposed) return;
+        if (attempt < 3) {
+          await Future<void>.delayed(const Duration(milliseconds: 250));
+        }
       }
-      _sendVideoParams();
-      // 连接成功后自动拉一次可卸载应用列表
-      requestAppList();
-    } catch (e) {
-      // 连接失败时也清理刚创建的端口转发
-      await _cleanupForward();
-      _setState(ConnState.error, '连接失败: $e');
     }
+    _setState(ConnState.error, '连接失败: $lastError');
+  }
+
+  void _handleStreamError(Object error) {
+    disconnect().then((_) {
+      if (!_disposed) _setState(ConnState.error, '连接错误: $error');
+    });
   }
 
   Future<void> disconnect() async {
@@ -274,6 +336,8 @@ class AppState extends ChangeNotifier {
     await decoder.dispose();
     await _cleanupForward();
     videoConfig = null;
+    displayInfo = null;
+    _connectionDefaultsApplied = false;
     frames = 0;
     firstFrameAt = null;
     fps = 0;
@@ -296,6 +360,7 @@ class AppState extends ChangeNotifier {
           break;
         }
         if (_isSameVideoConfig(old, cfg)) {
+          _applyConnectionVideoDefaultsIfReady();
           break;
         }
         if (recordingState == RecordingState.waitingForKeyframe) {
@@ -306,11 +371,13 @@ class AppState extends ChangeNotifier {
         videoConfig = cfg;
         await decoder.dispose();
         await decoder.init(
-            codec: cfg.codec,
-            width: cfg.width,
-            height: cfg.height,
-            sps: cfg.sps,
-            pps: cfg.pps);
+          codec: cfg.codec,
+          width: cfg.width,
+          height: cfg.height,
+          sps: cfg.sps,
+          pps: cfg.pps,
+        );
+        _applyConnectionVideoDefaultsIfReady();
         notifyListeners();
         break;
       case PacketType.videoFrame:
@@ -332,6 +399,17 @@ class AppState extends ChangeNotifier {
     if (payload.isEmpty) return;
     final sub = payload[0];
     final body = Uint8List.sublistView(payload, 1);
+    if (sub == DeviceStatusSubType.displayInfo) {
+      try {
+        displayInfo = DisplayInfo.parse(body);
+      } on FormatException catch (e) {
+        debugPrint('[display] invalid status: $e');
+        return;
+      }
+      _applyConnectionVideoDefaultsIfReady();
+      notifyListeners();
+      return;
+    }
     if (sub == DeviceStatusSubType.appList) {
       apps = parseAppList(body);
       appsLoading = false;
@@ -366,6 +444,34 @@ class AppState extends ChangeNotifier {
       ControlSubType.changeVideoParams,
       encodeVideoParams(targetMaxShort, targetBitrate, targetFps),
     );
+  }
+
+  void _applyConnectionVideoDefaultsIfReady() {
+    if (_connectionDefaultsApplied || _hasSavedVideoParams) return;
+    final display = displayInfo;
+    final config = videoConfig;
+    final device = selectedDevice;
+    if (display == null || config == null || device == null) return;
+
+    _connectionDefaultsApplied = true;
+    final isWifi = device.connection == 'TCP';
+    targetMaxShort = DisplayGeometry.defaultMaxShort(display, isWifi: isWifi);
+    targetFps = config.fps;
+    targetBitrate = targetMaxShort <= 1080
+        ? 4 * 1000 * 1000
+        : (isWifi ? 6 * 1000 * 1000 : 12 * 1000 * 1000);
+    final effective = DisplayGeometry.effectiveSize(
+      config.width,
+      config.height,
+      display.rotation,
+    );
+    final currentShort = effective.width < effective.height
+        ? effective.width
+        : effective.height;
+    if (targetMaxShort != currentShort) {
+      _sendVideoParams();
+    }
+    notifyListeners();
   }
 
   void _onEncoderState(String source, bool paused) {
@@ -414,10 +520,12 @@ class AppState extends ChangeNotifier {
       _cancelRecordingTimers();
       recordingState = RecordingState.idle;
       await decoder.cancelRecording();
-      _publishMediaNotice(const MediaNotice(
-        MediaKind.recording,
-        MediaSaveResult(ok: false, error: '等待关键帧超时，录制未开始'),
-      ));
+      _publishMediaNotice(
+        const MediaNotice(
+          MediaKind.recording,
+          MediaSaveResult(ok: false, error: '等待关键帧超时，录制未开始'),
+        ),
+      );
       notifyListeners();
     });
     notifyListeners();
@@ -505,10 +613,12 @@ class AppState extends ChangeNotifier {
       _cancelRecordingTimers();
       recordingState = RecordingState.idle;
       _recordingStartedAt = null;
-      _publishMediaNotice(MediaNotice(
-        MediaKind.recording,
-        MediaSaveResult(ok: false, error: error ?? '录制失败'),
-      ));
+      _publishMediaNotice(
+        MediaNotice(
+          MediaKind.recording,
+          MediaSaveResult(ok: false, error: error ?? '录制失败'),
+        ),
+      );
       notifyListeners();
     }
   }
@@ -541,10 +651,12 @@ class AppState extends ChangeNotifier {
     if (cfg.codec != VideoCodec.h264) {
       _cancelRecordingTimers();
       recordingState = RecordingState.idle;
-      _publishMediaNotice(const MediaNotice(
-        MediaKind.recording,
-        MediaSaveResult(ok: false, error: '服务端重建编码器后未提供 H.264 码流'),
-      ));
+      _publishMediaNotice(
+        const MediaNotice(
+          MediaKind.recording,
+          MediaSaveResult(ok: false, error: '服务端重建编码器后未提供 H.264 码流'),
+        ),
+      );
       notifyListeners();
       return;
     }
@@ -559,13 +671,12 @@ class AppState extends ChangeNotifier {
     if (!result.ok) {
       _cancelRecordingTimers();
       recordingState = RecordingState.idle;
-      _publishMediaNotice(MediaNotice(
-        MediaKind.recording,
-        MediaSaveResult(
-          ok: false,
-          error: result.error ?? '无法使用重建后的编码参数开始录制',
+      _publishMediaNotice(
+        MediaNotice(
+          MediaKind.recording,
+          MediaSaveResult(ok: false, error: result.error ?? '无法使用重建后的编码参数开始录制'),
         ),
-      ));
+      );
     }
     notifyListeners();
   }
@@ -616,10 +727,14 @@ class AppState extends ChangeNotifier {
 
   void _startHeartbeat() {
     _lastHeartbeatAt = DateTime.now();
-    _heartbeatTimer =
-        Timer.periodic(_heartbeatInterval, (_) => _sendHeartbeat());
+    _heartbeatTimer = Timer.periodic(
+      _heartbeatInterval,
+      (_) => _sendHeartbeat(),
+    );
     _heartbeatCheckTimer = Timer.periodic(
-        const Duration(seconds: 5), (_) => _checkHeartbeatTimeout());
+      const Duration(seconds: 5),
+      (_) => _checkHeartbeatTimeout(),
+    );
   }
 
   void _stopHeartbeat() {
@@ -710,8 +825,10 @@ class AppState extends ChangeNotifier {
       return const AppActionResult.fail('文本为空');
     }
     debugPrint('[sendTextInput] text="$text"');
-    stream.send(PacketType.control,
-        encodeControl(ControlSubType.textInput, encodeTextInput(text)));
+    stream.send(
+      PacketType.control,
+      encodeControl(ControlSubType.textInput, encodeTextInput(text)),
+    );
     return const AppActionResult.ok('文本已发送');
   }
 
@@ -738,7 +855,12 @@ class AppState extends ChangeNotifier {
   int _scrollY = 0;
   Timer? _scrollTimer;
 
-  void scrollAtPosition(int devX, int devY, double deltaY) {
+  void scrollAtPosition(
+    int devX,
+    int devY,
+    double deltaY, {
+    required int coordinateHeight,
+  }) {
     final cfg = videoConfig;
     if (cfg == null) return;
     if (selectedDevice == null) return;
@@ -747,10 +869,10 @@ class AppState extends ChangeNotifier {
     _scrollAccum += deltaY;
     _scrollTimer?.cancel();
     _scrollTimer = Timer(const Duration(milliseconds: 100), () {
-      _fireScroll(cfg.height);
+      _fireScroll(coordinateHeight);
     });
     if (!_scrollBusy) {
-      _fireScroll(cfg.height);
+      _fireScroll(coordinateHeight);
     }
   }
 
@@ -764,23 +886,33 @@ class AppState extends ChangeNotifier {
     final y1 = _scrollY;
     final y2 = (y1 + distance).clamp(0, devH - 1);
     debugPrint('[scroll] fire swipe($_scrollX,$y1 -> $_scrollX,$y2)');
-    hdc
-        .uitestSwipe(_scrollX, y1, _scrollX, y2, velocity: 2000)
-        .whenComplete(() {
-      _scrollBusy = false;
-      if (_scrollAccum.abs() >= 10) {
-        _fireScroll(devH);
-      }
-    });
+    hdc.uitestSwipe(_scrollX, y1, _scrollX, y2, velocity: 2000).whenComplete(
+      () {
+        _scrollBusy = false;
+        if (_scrollAccum.abs() >= 10) {
+          _fireScroll(devH);
+        }
+      },
+    );
   }
 
   /// 通过 0x10/0x30 控制包请求服务端下发可卸载应用列表。
+  void requestDisplayInfo() {
+    if (connState != ConnState.connected) return;
+    stream.send(
+      PacketType.control,
+      encodeControl(ControlSubType.getDisplayInfo, Uint8List(0)),
+    );
+  }
+
   void requestAppList() {
     if (connState != ConnState.connected) return;
     appsLoading = true;
     notifyListeners();
-    stream.send(PacketType.control,
-        encodeControl(ControlSubType.listApps, Uint8List(0)));
+    stream.send(
+      PacketType.control,
+      encodeControl(ControlSubType.listApps, Uint8List(0)),
+    );
   }
 
   Future<void> _cleanupForward() async {

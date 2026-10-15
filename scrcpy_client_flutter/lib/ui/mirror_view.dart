@@ -1,9 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../display/display_geometry.dart';
 import '../net/protocol.dart';
 import '../state/app_state.dart';
 import 'empty_state.dart';
@@ -19,8 +21,15 @@ class MirrorView extends StatefulWidget {
 }
 
 class _MirrorViewState extends State<MirrorView> {
+  static const Duration _minimumMouseTouchDuration = Duration(
+    milliseconds: 120,
+  );
+
   final GlobalKey _viewKey = GlobalKey();
   final Map<int, int> _pointerButtonMap = {};
+  final Map<int, Duration> _pointerDownTimes = {};
+  final Map<int, Timer> _pendingTouchUpTimers = {};
+  final Map<int, Uint8List> _pendingTouchUpPayloads = {};
   final FocusNode _focusNode = FocusNode();
   bool _trackpadScrolling = false;
   ConnState _prevConnState = ConnState.idle;
@@ -33,6 +42,14 @@ class _MirrorViewState extends State<MirrorView> {
 
   @override
   void dispose() {
+    for (final payload in _pendingTouchUpPayloads.values) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+    }
+    for (final timer in _pendingTouchUpTimers.values) {
+      timer.cancel();
+    }
+    _pendingTouchUpTimers.clear();
+    _pendingTouchUpPayloads.clear();
     widget.state.removeListener(_onStateChanged);
     _focusNode.dispose();
     super.dispose();
@@ -151,23 +168,81 @@ class _MirrorViewState extends State<MirrorView> {
   } // pointer -> button type (0=touch, 2=right, 1=middle)
 
   Uint8List _touchPayload(
-      Offset local, Size renderSize, int devW, int devH, int pointerId) {
-    final x =
-        (local.dx / renderSize.width * devW).clamp(0.0, devW.toDouble() - 1);
-    final y =
-        (local.dy / renderSize.height * devH).clamp(0.0, devH.toDouble() - 1);
+    Offset local,
+    Size renderSize,
+    int devW,
+    int devH,
+    int pointerId,
+  ) {
+    final x = (local.dx / renderSize.width * devW).clamp(
+      0.0,
+      devW.toDouble() - 1,
+    );
+    final y = (local.dy / renderSize.height * devH).clamp(
+      0.0,
+      devH.toDouble() - 1,
+    );
     widget.state.lastTouchX = x.toInt();
     widget.state.lastTouchY = y.toInt();
     return encodeTouch(x, y, pointerId);
   }
 
+  int _touchPointerId(PointerEvent event) {
+    // Windows 鼠标 pointer 是 Flutter 的全局事件编号，不是设备触点编号。
+    // legacy OpenHarmony 注入接口要求单指鼠标序列使用稳定的小编号。
+    if (event.kind == PointerDeviceKind.mouse) return 0;
+    return event.pointer & 0xFFFF;
+  }
+
+  void _flushPendingTouchUp(int pointer) {
+    _pendingTouchUpTimers.remove(pointer)?.cancel();
+    final payload = _pendingTouchUpPayloads.remove(pointer);
+    if (payload != null) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+    }
+  }
+
+  void _sendTouchUp(PointerEvent event, Uint8List payload, Duration? downTime) {
+    if (event.kind != PointerDeviceKind.mouse || downTime == null) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+      return;
+    }
+
+    final elapsed = event.timeStamp - downTime;
+    final remaining = _minimumMouseTouchDuration - elapsed;
+    if (remaining <= Duration.zero) {
+      widget.state.sendControl(ControlSubType.touchUp, payload);
+      return;
+    }
+
+    _pendingTouchUpTimers.remove(event.pointer)?.cancel();
+    _pendingTouchUpPayloads[event.pointer] = payload;
+    _pendingTouchUpTimers[event.pointer] = Timer(remaining, () {
+      _pendingTouchUpTimers.remove(event.pointer);
+      final pendingPayload = _pendingTouchUpPayloads.remove(event.pointer);
+      if (pendingPayload != null && mounted) {
+        widget.state.sendControl(ControlSubType.touchUp, pendingPayload);
+      }
+    });
+  }
+
   Uint8List _mousePayload(
-      Offset local, Size renderSize, int devW, int devH, int action, int button,
-      {double axisValue = 0}) {
-    final x =
-        (local.dx / renderSize.width * devW).clamp(0.0, devW.toDouble() - 1);
-    final y =
-        (local.dy / renderSize.height * devH).clamp(0.0, devH.toDouble() - 1);
+    Offset local,
+    Size renderSize,
+    int devW,
+    int devH,
+    int action,
+    int button, {
+    double axisValue = 0,
+  }) {
+    final x = (local.dx / renderSize.width * devW).clamp(
+      0.0,
+      devW.toDouble() - 1,
+    );
+    final y = (local.dy / renderSize.height * devH).clamp(
+      0.0,
+      devH.toDouble() - 1,
+    );
     return encodeMouseEvent(action, button, x, y, axisValue);
   }
 
@@ -186,87 +261,53 @@ class _MirrorViewState extends State<MirrorView> {
     final id = state.decoder.textureId;
     final connected = state.connState == ConnState.connected;
 
-    return Listener(
-      onPointerSignal: (e) {
-        if (e is PointerScrollEvent) {
-          if (!connected || cfg == null) return;
-          final size = _renderedSize();
-          if (size.isEmpty) return;
-          final devW = cfg.width;
-          final devH = cfg.height;
-          final devX = (e.localPosition.dx / size.width * devW)
-              .clamp(0.0, devW.toDouble() - 1)
-              .toInt();
-          final devY = (e.localPosition.dy / size.height * devH)
-              .clamp(0.0, devH.toDouble() - 1)
-              .toInt();
-          widget.state.scrollAtPosition(devX, devY, e.scrollDelta.dy);
-        }
-      },
-      onPointerPanZoomStart: (e) {
-        _trackpadScrolling = true;
-      },
-      onPointerPanZoomEnd: (e) {
-        _trackpadScrolling = false;
-      },
-      onPointerPanZoomUpdate: (e) {
-        if (!connected || cfg == null) return;
-        if (e.panDelta.dy.abs() < 2) return;
-        final size = _renderedSize();
-        if (size.isEmpty) return;
-        final devW = cfg.width;
-        final devH = cfg.height;
-        final devX = (e.localPosition.dx / size.width * devW)
-            .clamp(0.0, devW.toDouble() - 1)
-            .toInt();
-        final devY = (e.localPosition.dy / size.height * devH)
-            .clamp(0.0, devH.toDouble() - 1)
-            .toInt();
-        // panDelta.dy 正值=手指向下滑=内容向上滚，与 scrollDelta 方向一致
-        widget.state.scrollAtPosition(devX, devY, e.panDelta.dy);
-      },
-      child: Focus(
-        focusNode: _focusNode,
-        autofocus: true,
-        onKeyEvent: _onKeyEvent,
-        child: Container(
-          color: AppColors.bg,
-          child: Column(
-            children: [
-              Expanded(
-                child: Container(
-                  margin: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Colors.black,
-                    border: Border.all(color: AppColors.borderStrong),
-                    borderRadius: BorderRadius.circular(AppRadius.md),
-                    gradient: const RadialGradient(
-                      center: Alignment.center,
-                      radius: 1.0,
-                      colors: [Color(0xFF0F172A), Colors.black],
-                    ),
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: Center(
-                    child: !connected
-                        ? const EmptyState(message: '请选择设备并点击「连接」')
-                        : (cfg == null
-                            ? const _Waiting(message: '等待视频流…')
-                            : _buildMirror(cfg, id)),
+    return Focus(
+      focusNode: _focusNode,
+      autofocus: true,
+      onKeyEvent: _onKeyEvent,
+      child: Container(
+        color: AppColors.bg,
+        child: Column(
+          children: [
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.black,
+                  border: Border.all(color: AppColors.borderStrong),
+                  borderRadius: BorderRadius.circular(AppRadius.md),
+                  gradient: const RadialGradient(
+                    center: Alignment.center,
+                    radius: 1.0,
+                    colors: [Color(0xFF0F172A), Colors.black],
                   ),
                 ),
+                clipBehavior: Clip.antiAlias,
+                child: Center(
+                  child: !connected
+                      ? const EmptyState(message: '请选择设备并点击「连接」')
+                      : (cfg == null
+                            ? const _Waiting(message: '等待视频流…')
+                            : _buildMirror(cfg, id, state.displayInfo)),
+                ),
               ),
-              _StatusBar(state: state),
-            ],
-          ),
+            ),
+            _StatusBar(state: state),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildMirror(VideoConfig cfg, int? textureId) {
-    final ratio = cfg.width / cfg.height;
-    final child = (textureId == null || textureId < 0)
+  Widget _buildMirror(VideoConfig cfg, int? textureId, DisplayInfo? display) {
+    final rotation = display?.rotation ?? 0;
+    final effective = DisplayGeometry.effectiveSize(
+      cfg.width,
+      cfg.height,
+      rotation,
+    );
+    final ratio = effective.width / effective.height;
+    final textureChild = (textureId == null || textureId < 0)
         ? Container(
             color: AppColors.elevated,
             alignment: Alignment.center,
@@ -281,29 +322,91 @@ class _MirrorViewState extends State<MirrorView> {
       child: Listener(
         key: _viewKey,
         behavior: HitTestBehavior.opaque,
+        onPointerSignal: (e) {
+          if (e is! PointerScrollEvent) return;
+          final size = _renderedSize();
+          if (size.isEmpty) return;
+          final devX = (e.localPosition.dx / size.width * effective.width)
+              .clamp(0.0, effective.width.toDouble() - 1)
+              .toInt();
+          final devY = (e.localPosition.dy / size.height * effective.height)
+              .clamp(0.0, effective.height.toDouble() - 1)
+              .toInt();
+          widget.state.scrollAtPosition(
+            devX,
+            devY,
+            e.scrollDelta.dy,
+            coordinateHeight: effective.height,
+          );
+        },
+        onPointerPanZoomStart: (e) {
+          _trackpadScrolling = true;
+        },
+        onPointerPanZoomEnd: (e) {
+          _trackpadScrolling = false;
+        },
+        onPointerPanZoomUpdate: (e) {
+          if (e.panDelta.dy.abs() < 2) return;
+          final size = _renderedSize();
+          if (size.isEmpty) return;
+          final devX = (e.localPosition.dx / size.width * effective.width)
+              .clamp(0.0, effective.width.toDouble() - 1)
+              .toInt();
+          final devY = (e.localPosition.dy / size.height * effective.height)
+              .clamp(0.0, effective.height.toDouble() - 1)
+              .toInt();
+          widget.state.scrollAtPosition(
+            devX,
+            devY,
+            e.panDelta.dy,
+            coordinateHeight: effective.height,
+          );
+        },
         onPointerDown: (e) {
           if (_trackpadScrolling) return;
+          _flushPendingTouchUp(e.pointer);
           _focusNode.requestFocus();
           final size = _renderedSize();
           if (size.isEmpty) return;
           if (e.buttons & kSecondaryButton != 0) {
             _pointerButtonMap[e.pointer] = MouseButton.right;
             widget.state.sendControl(
-                ControlSubType.mouseEvent,
-                _mousePayload(e.localPosition, size, cfg.width, cfg.height,
-                    MouseAction.buttonDown, MouseButton.right));
+              ControlSubType.mouseEvent,
+              _mousePayload(
+                e.localPosition,
+                size,
+                effective.width,
+                effective.height,
+                MouseAction.buttonDown,
+                MouseButton.right,
+              ),
+            );
           } else if (e.buttons & kTertiaryButton != 0) {
             _pointerButtonMap[e.pointer] = MouseButton.middle;
             widget.state.sendControl(
-                ControlSubType.mouseEvent,
-                _mousePayload(e.localPosition, size, cfg.width, cfg.height,
-                    MouseAction.buttonDown, MouseButton.middle));
+              ControlSubType.mouseEvent,
+              _mousePayload(
+                e.localPosition,
+                size,
+                effective.width,
+                effective.height,
+                MouseAction.buttonDown,
+                MouseButton.middle,
+              ),
+            );
           } else {
             _pointerButtonMap[e.pointer] = -1;
+            _pointerDownTimes[e.pointer] = e.timeStamp;
             widget.state.sendControl(
-                ControlSubType.touchDown,
-                _touchPayload(e.localPosition, size, cfg.width, cfg.height,
-                    e.pointer & 0xFFFF));
+              ControlSubType.touchDown,
+              _touchPayload(
+                e.localPosition,
+                size,
+                effective.width,
+                effective.height,
+                _touchPointerId(e),
+              ),
+            );
           }
         },
         onPointerMove: (e) {
@@ -312,35 +415,68 @@ class _MirrorViewState extends State<MirrorView> {
           final btn = _pointerButtonMap[e.pointer] ?? -1;
           if (btn >= 0) return;
           widget.state.sendControl(
-              ControlSubType.touchMove,
-              _touchPayload(e.localPosition, size, cfg.width, cfg.height,
-                  e.pointer & 0xFFFF));
+            ControlSubType.touchMove,
+            _touchPayload(
+              e.localPosition,
+              size,
+              effective.width,
+              effective.height,
+              _touchPointerId(e),
+            ),
+          );
         },
         onPointerUp: (e) {
           final size = _renderedSize();
           if (size.isEmpty) return;
           final btn = _pointerButtonMap.remove(e.pointer) ?? -1;
+          final downTime = _pointerDownTimes.remove(e.pointer);
           if (btn >= 0) {
             widget.state.sendControl(
-                ControlSubType.mouseEvent,
-                _mousePayload(e.localPosition, size, cfg.width, cfg.height,
-                    MouseAction.buttonUp, btn));
+              ControlSubType.mouseEvent,
+              _mousePayload(
+                e.localPosition,
+                size,
+                effective.width,
+                effective.height,
+                MouseAction.buttonUp,
+                btn,
+              ),
+            );
           } else {
-            widget.state.sendControl(
-                ControlSubType.touchUp,
-                _touchPayload(e.localPosition, size, cfg.width, cfg.height,
-                    e.pointer & 0xFFFF));
+            _sendTouchUp(
+              e,
+              _touchPayload(
+                e.localPosition,
+                size,
+                effective.width,
+                effective.height,
+                _touchPointerId(e),
+              ),
+              downTime,
+            );
           }
         },
         onPointerCancel: (e) {
           final size = _renderedSize();
           if (size.isEmpty) return;
+          _pointerDownTimes.remove(e.pointer);
+          _pendingTouchUpTimers.remove(e.pointer)?.cancel();
+          _pendingTouchUpPayloads.remove(e.pointer);
           widget.state.sendControl(
-              ControlSubType.touchUp,
-              _touchPayload(e.localPosition, size, cfg.width, cfg.height,
-                  e.pointer & 0xFFFF));
+            ControlSubType.touchUp,
+            _touchPayload(
+              e.localPosition,
+              size,
+              effective.width,
+              effective.height,
+              _touchPointerId(e),
+            ),
+          );
         },
-        child: child,
+        child: RotatedBox(
+          quarterTurns: DisplayGeometry.quarterTurns(rotation),
+          child: textureChild,
+        ),
       ),
     );
   }
@@ -358,7 +494,9 @@ class _Waiting extends StatelessWidget {
           width: 32,
           height: 32,
           child: CircularProgressIndicator(
-              strokeWidth: 2.0, color: AppColors.accent),
+            strokeWidth: 2.0,
+            color: AppColors.accent,
+          ),
         ),
         const SizedBox(height: 14),
         Text(
@@ -388,56 +526,107 @@ class _StatusBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cfg = state.videoConfig;
+    final display = state.displayInfo;
+    final effective = cfg == null
+        ? null
+        : DisplayGeometry.effectiveSize(
+            cfg.width,
+            cfg.height,
+            display?.rotation ?? 0,
+          );
     final isH264 = cfg != null && cfg.codec == VideoCodec.h264;
     final isConnected = state.connState == ConnState.connected;
     final canControl = isH264 && isConnected;
 
-    final res = cfg == null ? '—' : '${cfg.width}×${cfg.height}';
+    final deviceLabel = display == null
+        ? '设备 —'
+        : '设备 ${display.logicalWidth}×${display.logicalHeight} '
+              '${display.logicalWidth >= display.logicalHeight ? '横屏' : '竖屏'}';
+    final scalePercent = display == null || effective == null
+        ? null
+        : DisplayGeometry.scalePercent(effective, display);
     final cfgFps = cfg == null
         ? '—'
         : canControl
-            ? '${state.targetFps}fps'
-            : '${cfg.fps}fps';
-    final liveFps =
-        isConnected && cfg != null ? '${state.fps.toStringAsFixed(0)}fps' : '—';
+        ? '${state.targetFps}fps'
+        : '${cfg.fps}fps';
+    final liveFps = isConnected && cfg != null
+        ? '${state.fps.toStringAsFixed(0)}fps'
+        : '—';
     final codecLabel = cfg == null
         ? '—'
         : (cfg.codec == VideoCodec.rawRgba
-            ? 'RAW'
-            : cfg.codec == VideoCodec.h264
-                ? 'H264'
-                : cfg.codec == VideoCodec.jpeg
-                    ? 'JPEG'
-                    : 'CODEC ${cfg.codec}');
+              ? 'RAW'
+              : cfg.codec == VideoCodec.h264
+              ? 'H264'
+              : cfg.codec == VideoCodec.jpeg
+              ? 'JPEG'
+              : 'CODEC ${cfg.codec}');
 
-    return Container(
-      height: 28,
-      padding: const EdgeInsets.symmetric(horizontal: 14),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(top: BorderSide(color: AppColors.border)),
-      ),
-      alignment: Alignment.centerLeft,
-      child: DefaultTextStyle.merge(
-        style: const TextStyle(
-          color: AppColors.textSecondary,
-          fontSize: 11,
-          fontFamily: kMonoFontFamily,
-          letterSpacing: 0.2,
-        ),
-        child: Row(
-          children: [
-            _stat(Icons.memory, codecLabel),
-            const _Sep(),
-            _resolutionMenu(context, res, canControl),
-            const _Sep(),
-            _fpsMenu(context, '$liveFps / $cfgFps', canControl),
-            const _Sep(),
-            _stat(Icons.movie_filter_outlined, '${state.frames} frames'),
-          ],
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final showPercent = constraints.maxWidth >= 720;
+        final showFrames = constraints.maxWidth >= 620;
+        final videoLabel = effective == null
+            ? '视频 —'
+            : '视频 ${effective.width}×${effective.height}'
+                  '${showPercent && scalePercent != null ? '（$scalePercent%）' : ''}';
+        return Container(
+          height: 28,
+          padding: const EdgeInsets.symmetric(horizontal: 14),
+          decoration: const BoxDecoration(
+            color: AppColors.surface,
+            border: Border(top: BorderSide(color: AppColors.border)),
+          ),
+          alignment: Alignment.centerLeft,
+          child: DefaultTextStyle.merge(
+            style: const TextStyle(
+              color: AppColors.textSecondary,
+              fontSize: 11,
+              fontFamily: kMonoFontFamily,
+              letterSpacing: 0,
+            ),
+            child: Row(
+              children: [
+                _stat(Icons.memory, codecLabel),
+                const _Sep(),
+                _stat(Icons.screen_rotation_outlined, deviceLabel),
+                const _Sep(),
+                _resolutionMenu(context, videoLabel, canControl),
+                const _Sep(),
+                _fpsMenu(context, '$liveFps / $cfgFps', canControl),
+                if (showFrames) ...[
+                  const _Sep(),
+                  _stat(Icons.movie_filter_outlined, '${state.frames} frames'),
+                ],
+              ],
+            ),
+          ),
+        );
+      },
     );
+  }
+
+  List<PopupMenuEntry<int>> _resolutionItems(int current) {
+    final entries = <PopupMenuEntry<int>>[];
+    final seen = <int>{};
+
+    void add(int value, String label) {
+      if (!seen.add(value)) return;
+      entries.add(_menuItem(value, label, current));
+    }
+
+    final display = state.displayInfo;
+    if (display != null) {
+      final nativeShort = display.logicalWidth < display.logicalHeight
+          ? display.logicalWidth
+          : display.logicalHeight;
+      add(nativeShort, '原始  ${display.logicalWidth}×${display.logicalHeight}');
+    }
+    add(720, '720p  (最短边≤720)');
+    add(1080, '1080p  (最短边≤1080)');
+    add(2160, '2160p  (最短边≤2160)');
+    return entries;
   }
 
   Widget _resolutionMenu(BuildContext context, String label, bool enabled) {
@@ -454,12 +643,13 @@ class _StatusBar extends StatelessWidget {
           showCenterToast(context, result.message);
         }
       },
-      itemBuilder: (_) => [
-        _menuItem(1080, '1080p  (最短边≤1080)', current),
-        _menuItem(2160, '2160p  (最短边≤2160)', current),
-      ],
-      child: _stat(Icons.aspect_ratio, label,
-          color: AppColors.accent, underline: true),
+      itemBuilder: (_) => _resolutionItems(current),
+      child: _stat(
+        Icons.aspect_ratio,
+        label,
+        color: AppColors.accent,
+        underline: true,
+      ),
     );
   }
 
@@ -480,10 +670,15 @@ class _StatusBar extends StatelessWidget {
       itemBuilder: (_) => [
         _menuItem(20, '20 fps', current),
         _menuItem(15, '15 fps', current),
+        _menuItem(10, '10 fps', current),
         _menuItem(8, '8 fps', current),
       ],
-      child:
-          _stat(Icons.speed, label, color: AppColors.accent, underline: true),
+      child: _stat(
+        Icons.speed,
+        label,
+        color: AppColors.accent,
+        underline: true,
+      ),
     );
   }
 
@@ -499,31 +694,39 @@ class _StatusBar extends StatelessWidget {
             color: value == current ? AppColors.accent : AppColors.textMuted,
           ),
           const SizedBox(width: 8),
-          Text(text,
-              style: TextStyle(
-                fontSize: 12,
-                color: value == current
-                    ? AppColors.accent
-                    : AppColors.textSecondary,
-              )),
+          Text(
+            text,
+            style: TextStyle(
+              fontSize: 12,
+              color: value == current
+                  ? AppColors.accent
+                  : AppColors.textSecondary,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _stat(IconData icon, String text,
-      {Color? color, bool underline = false}) {
+  Widget _stat(
+    IconData icon,
+    String text, {
+    Color? color,
+    bool underline = false,
+  }) {
     final textColor = color ?? AppColors.textSecondary;
     return Row(
       children: [
         Icon(icon, size: 12, color: color ?? AppColors.textMuted),
         const SizedBox(width: 6),
-        Text(text,
-            style: TextStyle(
-              color: textColor,
-              decoration: underline ? TextDecoration.underline : null,
-              decorationColor: textColor,
-            )),
+        Text(
+          text,
+          style: TextStyle(
+            color: textColor,
+            decoration: underline ? TextDecoration.underline : null,
+            decorationColor: textColor,
+          ),
+        ),
       ],
     );
   }
@@ -536,7 +739,7 @@ class _Sep extends StatelessWidget {
     return Container(
       width: 1,
       height: 12,
-      margin: const EdgeInsets.symmetric(horizontal: 12),
+      margin: const EdgeInsets.symmetric(horizontal: 10),
       color: AppColors.border,
     );
   }
